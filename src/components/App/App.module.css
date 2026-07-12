@@ -19,8 +19,8 @@
   position: fixed;
   inset: 0;
   z-index: 900;
-  width: 100vw;
-  min-width: 100vw;
+  width: 100%;
+  min-width: 0;
   max-width: none;
   height: 100dvh;
   min-height: 100svh;
@@ -30,6 +30,78 @@
   overflow: hidden;
   background: #050912;
   overscroll-behavior: none;
+}
+
+.fullscreenTapSurface {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.fullscreenExitButton {
+  position: absolute;
+  top: max(10px, env(safe-area-inset-top));
+  left: max(10px, env(safe-area-inset-left));
+  z-index: 48;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: var(--watch-text) !important;
+  background: rgba(7, 12, 22, 0.54) !important;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+}
+
+.floatingChatButton {
+  position: absolute;
+  right: max(14px, env(safe-area-inset-right));
+  bottom: calc(76px + max(10px, env(safe-area-inset-bottom)));
+  z-index: 46;
+  display: grid;
+  width: 46px;
+  height: 46px;
+  place-items: center;
+  padding: 0;
+  touch-action: none;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 50%;
+  color: rgba(255, 255, 255, 0.72);
+  background: rgba(8, 13, 24, 0.24);
+  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.16);
+  opacity: 0.3;
+  cursor: grab;
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  transition:
+    opacity 160ms ease,
+    background 160ms ease,
+    border-color 160ms ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.floatingChatButton:hover,
+.floatingChatButton:focus-visible,
+.floatingChatButtonUnread {
+  opacity: 0.78;
+  border-color: rgba(255, 122, 105, 0.44);
+  background: rgba(12, 19, 33, 0.54);
+}
+
+.floatingChatButton:active {
+  cursor: grabbing;
+}
+
+.floatingChatUnreadDot {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 7px;
+  height: 7px;
+  border: 1px solid rgba(5, 9, 18, 0.82);
+  border-radius: 50%;
+  background: #ff4d4f;
+  box-shadow: 0 0 0 2px rgba(255, 77, 79, 0.12);
 }
 
 .fullscreenLayout:fullscreen {
@@ -505,6 +577,18 @@
 
   .fullscreenControls {
     padding-inline: 4px;
+  }
+
+  .fullscreenExitButton {
+    top: max(6px, env(safe-area-inset-top));
+    left: max(6px, env(safe-area-inset-left));
+  }
+
+  .floatingChatButton {
+    right: max(8px, env(safe-area-inset-right));
+    bottom: calc(68px + max(6px, env(safe-area-inset-bottom)));
+    width: 42px;
+    height: 42px;
   }
 }
 

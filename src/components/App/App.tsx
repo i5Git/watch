@@ -47,6 +47,7 @@ import { ActionIcon, Badge, TextInput, Button } from "@mantine/core";
 import {
   IconChevronLeft,
   IconChevronRight,
+  IconArrowsMinimize,
   IconFile,
   IconList,
   IconMessageCircle,
@@ -115,6 +116,8 @@ interface AppState {
   fullscreenChatOpen: boolean;
   fullscreenControlsVisible: boolean;
   fullscreenChatMessage: ChatMessage | null;
+  fullscreenChatUnread: boolean;
+  fullscreenChatButtonOffset: { x: number; y: number };
   controlsTimestamp: number;
   watchOptions: SearchResult[];
   isVBrowser: boolean;
@@ -186,6 +189,8 @@ export class App extends React.Component<AppProps, AppState> {
     fullscreenChatOpen: false,
     fullscreenControlsVisible: true,
     fullscreenChatMessage: null,
+    fullscreenChatUnread: false,
+    fullscreenChatButtonOffset: { x: 0, y: 0 },
     controlsTimestamp: 0,
     watchOptions: [],
     isVBrowser: false,
@@ -247,6 +252,20 @@ export class App extends React.Component<AppProps, AppState> {
   heartbeat: number | undefined = undefined;
   fullscreenControlsTimer: number | undefined;
   fullscreenMessageTimer: number | undefined;
+  fullscreenChatDrag:
+    | {
+        pointerId: number;
+        startX: number;
+        startY: number;
+        originX: number;
+        originY: number;
+        minX: number;
+        maxX: number;
+        minY: number;
+        maxY: number;
+        moved: boolean;
+      }
+    | undefined;
   YouTubeInterface: YouTube = new YouTube(null);
   HTMLInterface: HTML = new HTML("leftVideo");
   Player = () => {
@@ -690,6 +709,13 @@ export class App extends React.Component<AppProps, AppState> {
       this.setState((state) => ({
         chat: [...state.chat, data].slice(-100),
         scrollTimestamp: Date.now(),
+        fullscreenChatUnread:
+          isTextMessage &&
+          data.id !== clientId &&
+          state.fullScreen &&
+          !state.fullscreenChatOpen
+            ? true
+            : state.fullscreenChatUnread,
         unreadCount:
           state.currentTab === "chat"
             ? state.unreadCount
@@ -1797,6 +1823,80 @@ export class App extends React.Component<AppProps, AppState> {
     }
   };
 
+  toggleFullscreenChat = () => {
+    this.setState(
+      (state) => ({
+        fullscreenChatOpen: !state.fullscreenChatOpen,
+        fullscreenChatUnread: state.fullscreenChatOpen
+          ? state.fullscreenChatUnread
+          : false,
+      }),
+      () => {
+        if (this.state.fullscreenChatOpen) {
+          this.clearFullscreenControlsTimer();
+          this.setState({ fullscreenControlsVisible: false });
+          setTimeout(() => this.chatRef.current?.scrollToBottom(), 100);
+        } else {
+          this.showFullscreenControls();
+        }
+      },
+    );
+  };
+
+  handleChatButtonPointerDown = (
+    event: React.PointerEvent<HTMLButtonElement>,
+  ) => {
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const rect = event.currentTarget.getBoundingClientRect();
+    const originX = this.state.fullscreenChatButtonOffset.x;
+    const originY = this.state.fullscreenChatButtonOffset.y;
+    this.fullscreenChatDrag = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originX,
+      originY,
+      minX: originX + 8 - rect.left,
+      maxX: originX + window.innerWidth - 8 - rect.right,
+      minY: originY + 8 - rect.top,
+      maxY: originY + window.innerHeight - 8 - rect.bottom,
+      moved: false,
+    };
+  };
+
+  handleChatButtonPointerMove = (
+    event: React.PointerEvent<HTMLButtonElement>,
+  ) => {
+    const drag = this.fullscreenChatDrag;
+    if (!drag || drag.pointerId !== event.pointerId) {
+      return;
+    }
+    const deltaX = event.clientX - drag.startX;
+    const deltaY = event.clientY - drag.startY;
+    drag.moved = drag.moved || Math.hypot(deltaX, deltaY) > 5;
+    this.setState({
+      fullscreenChatButtonOffset: {
+        x: Math.min(drag.maxX, Math.max(drag.minX, drag.originX + deltaX)),
+        y: Math.min(drag.maxY, Math.max(drag.minY, drag.originY + deltaY)),
+      },
+    });
+  };
+
+  handleChatButtonPointerUp = (
+    event: React.PointerEvent<HTMLButtonElement>,
+  ) => {
+    const drag = this.fullscreenChatDrag;
+    if (!drag || drag.pointerId !== event.pointerId) {
+      return;
+    }
+    event.currentTarget.releasePointerCapture(event.pointerId);
+    this.fullscreenChatDrag = undefined;
+    if (!drag.moved) {
+      this.toggleFullscreenChat();
+    }
+  };
+
   onFullScreenChange = () => {
     const fullScreen = Boolean(document.fullscreenElement);
     this.setState(
@@ -1805,6 +1905,7 @@ export class App extends React.Component<AppProps, AppState> {
         fullscreenChatOpen: false,
         fullscreenControlsVisible: fullScreen,
         fullscreenChatMessage: null,
+        fullscreenChatUnread: false,
       },
       () => {
         this.syncFullscreenBodyClass(fullScreen);
@@ -1850,6 +1951,7 @@ export class App extends React.Component<AppProps, AppState> {
         fullscreenChatOpen: false,
         fullscreenControlsVisible: fullScreen,
         fullscreenChatMessage: null,
+        fullscreenChatUnread: false,
       },
       () => {
         this.syncFullscreenBodyClass(fullScreen);
@@ -1869,7 +1971,11 @@ export class App extends React.Component<AppProps, AppState> {
       document.getElementById("watch-room-layout") ?? document.body;
 
     if (document.fullscreenElement) {
-      await document.exitFullscreen();
+      try {
+        await document.exitFullscreen();
+      } finally {
+        this.setCustomFullscreen(false);
+      }
       return;
     }
 
@@ -2046,12 +2152,6 @@ export class App extends React.Component<AppProps, AppState> {
         roomPlaylistPlay={this.roomPlaylistPlay}
         playlist={this.state.playlist}
         fullscreen={this.state.fullScreen}
-        chatOpen={this.state.fullscreenChatOpen}
-        onToggleChat={() => {
-          this.setState((state) => ({
-            fullscreenChatOpen: !state.fullscreenChatOpen,
-          }));
-        }}
       />
     );
     return (
@@ -2428,8 +2528,14 @@ export class App extends React.Component<AppProps, AppState> {
                         id="leftVideo"
                         onEnded={(e) => this.onVideoEnded(e.currentTarget.src)}
                         playsInline
-                        onPointerDown={this.handleVideoInteraction}
                       ></video>
+                    )}
+                    {this.state.fullScreen && this.state.roomMedia && (
+                      <div
+                        className={styles.fullscreenTapSurface}
+                        onPointerDown={this.handleVideoInteraction}
+                        aria-hidden="true"
+                      />
                     )}
                     {this.state.fullScreen && this.state.roomMedia && (
                       <div
@@ -2604,9 +2710,7 @@ export class App extends React.Component<AppProps, AppState> {
                     <ActionIcon
                       variant="subtle"
                       aria-label={t("closeChat")}
-                      onClick={() => {
-                        this.setState({ fullscreenChatOpen: false });
-                      }}
+                      onClick={this.toggleFullscreenChat}
                     >
                       <IconX size={18} />
                     </ActionIcon>
@@ -2626,6 +2730,48 @@ export class App extends React.Component<AppProps, AppState> {
                   />
                 </div>
               </div>
+            )}
+            {this.state.fullScreen && (
+              <>
+                <ActionIcon
+                  className={styles.fullscreenExitButton}
+                  variant="filled"
+                  size="lg"
+                  aria-label="خروج از تمام صفحه"
+                  title="خروج از تمام صفحه"
+                  onClick={() => this.localFullScreen(true)}
+                >
+                  <IconArrowsMinimize size={20} />
+                </ActionIcon>
+                <button
+                  type="button"
+                  className={`${styles.floatingChatButton} ${
+                    this.state.fullscreenChatUnread
+                      ? styles.floatingChatButtonUnread
+                      : ""
+                  }`}
+                  style={{
+                    transform: `translate3d(${this.state.fullscreenChatButtonOffset.x}px, ${this.state.fullscreenChatButtonOffset.y}px, 0)`,
+                  }}
+                  aria-label={
+                    this.state.fullscreenChatOpen
+                      ? t("closeChat")
+                      : t("openChat")
+                  }
+                  title={t("conversation")}
+                  onPointerDown={this.handleChatButtonPointerDown}
+                  onPointerMove={this.handleChatButtonPointerMove}
+                  onPointerUp={this.handleChatButtonPointerUp}
+                  onPointerCancel={() => {
+                    this.fullscreenChatDrag = undefined;
+                  }}
+                >
+                  <IconMessageCircle size={21} />
+                  {this.state.fullscreenChatUnread && (
+                    <span className={styles.floatingChatUnreadDot} />
+                  )}
+                </button>
+              </>
             )}
           </div>
         }

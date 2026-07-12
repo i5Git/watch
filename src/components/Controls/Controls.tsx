@@ -3,7 +3,6 @@ import { Badge, Button, Menu, Progress, Slider } from "@mantine/core";
 import { formatTimestamp, softWhite } from "../../utils/utils";
 import styles from "./Controls.module.css";
 import { MetadataContext } from "../../MetadataContext";
-import { t } from "../../i18n";
 import {
   IconPlayerPlayFilled,
   IconPlayerPauseFilled,
@@ -15,7 +14,6 @@ import {
   IconVolume,
   IconTheater,
   IconMaximize,
-  IconMessageCircle,
   IconPlayerSkipForwardFilled,
 } from "@tabler/icons-react";
 
@@ -49,8 +47,6 @@ interface ControlsProps {
   roomPlaylistPlay: (index: number) => void;
   playlist: PlaylistVideo[];
   fullscreen?: boolean;
-  chatOpen?: boolean;
-  onToggleChat?: () => void;
 }
 
 export const Controls = (props: ControlsProps) => {
@@ -142,37 +138,8 @@ export const Controls = (props: ControlsProps) => {
     disabled: disabled || isPauseDisabled,
   };
 
-  if (props.fullscreen && props.chatOpen && props.onToggleChat) {
-    return (
-      <div
-        className={`${styles.controls} ${styles.fullscreen} ${styles.chatOnlyControls}`}
-      >
-        <Button
-          className={styles.chatToggleButton}
-          size="compact-sm"
-          onClick={props.onToggleChat}
-          aria-label={t("closeChat")}
-          leftSection={<IconMessageCircle size={17} />}
-        >
-          {t("closeChat")}
-        </Button>
-      </div>
-    );
-  }
-
   return (
     <div className={`${styles.controls} ${props.fullscreen ? styles.fullscreen : ""}`}>
-      {props.fullscreen && props.onToggleChat && (
-        <Button
-          className={styles.chatToggleButton}
-          size="compact-sm"
-          onClick={props.onToggleChat}
-          aria-label={t("openChat")}
-          leftSection={<IconMessageCircle size={17} />}
-        >
-          {t("conversation")}
-        </Button>
-      )}
       {paused ? (
         <IconPlayerPlayFilled {...playPauseProps} />
       ) : (
