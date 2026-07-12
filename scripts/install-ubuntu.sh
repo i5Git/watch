@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-readonly DEFAULT_REPO_URL="https://github.com/i5Git/watch-together.git"
+readonly DEFAULT_REPO_URL="https://github.com/i5Git/watch.git"
 readonly DEFAULT_INSTALL_DIR="/opt/watch"
 readonly SERVICE_NAME="watch"
 
@@ -27,7 +27,7 @@ usage() {
   cat <<'EOF'
 Install Watch on Ubuntu/Debian with Docker Compose:
 
-  curl -fsSL https://raw.githubusercontent.com/i5Git/watch-together/main/scripts/install-ubuntu.sh | bash -s -- --yes
+  curl -fsSL https://raw.githubusercontent.com/i5Git/watch/main/scripts/install-ubuntu.sh | bash -s -- --yes
 
 Options:
   --yes                 Accept defaults without prompting.

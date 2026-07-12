@@ -20,7 +20,7 @@ This is a standalone redesign based on the open-source WatchParty project. The u
 The easiest deployment path downloads the installer, clones Watch into `/opt/watch`, installs Docker Compose, starts the service, and restarts it after reboot:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/i5Git/watch-together/main/scripts/install-ubuntu.sh | bash -s -- --yes
+curl -fsSL https://raw.githubusercontent.com/i5Git/watch/main/scripts/install-ubuntu.sh | bash -s -- --yes
 ```
 
 The installer defaults to port `8080` and Docker Compose. It creates a strong admin password when one is not supplied, persists users and media under `data/`, and prints the final URL, admin username, and generated password.
@@ -28,21 +28,21 @@ The installer defaults to port `8080` and Docker Compose. It creates a strong ad
 For an interactive setup:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/i5Git/watch-together/main/scripts/install-ubuntu.sh | bash
+curl -fsSL https://raw.githubusercontent.com/i5Git/watch/main/scripts/install-ubuntu.sh | bash
 ```
 
 Useful options:
 
 ```bash
 # Update the existing /opt/watch checkout and rebuild it.
-curl -fsSL https://raw.githubusercontent.com/i5Git/watch-together/main/scripts/install-ubuntu.sh | bash -s -- --update --yes
+curl -fsSL https://raw.githubusercontent.com/i5Git/watch/main/scripts/install-ubuntu.sh | bash -s -- --update --yes
 
 # Use another directory or public port.
-curl -fsSL https://raw.githubusercontent.com/i5Git/watch-together/main/scripts/install-ubuntu.sh | \
+curl -fsSL https://raw.githubusercontent.com/i5Git/watch/main/scripts/install-ubuntu.sh | \
   bash -s -- --yes --dir /srv/watch --port 8080
 
 # Prompt for optional TURN, YouTube, Postgres, and Redis configuration.
-curl -fsSL https://raw.githubusercontent.com/i5Git/watch-together/main/scripts/install-ubuntu.sh | \
+curl -fsSL https://raw.githubusercontent.com/i5Git/watch/main/scripts/install-ubuntu.sh | \
   bash -s -- --advanced
 ```
 
