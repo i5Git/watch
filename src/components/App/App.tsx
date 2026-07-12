@@ -2361,7 +2361,9 @@ export class App extends React.Component<AppProps, AppState> {
         )}
         {!this.state.fullScreen && (
           <TopBar
-            roomTitle={this.state.roomTitle || "اتاق تماشا"}
+            roomTitle={
+              this.state.roomTitle || this.context.siteSettings.defaultRoomName
+            }
             roomDescription={this.state.roomDescription}
             roomTitleColor={this.state.roomTitleColor}
           />

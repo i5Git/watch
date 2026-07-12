@@ -19,6 +19,7 @@ export interface MetadataState {
   beta: boolean;
   siteSettings: {
     brandName: string;
+    defaultRoomName: string;
     landingEnabled: boolean;
   };
   refreshSiteSettings: () => Promise<void>;
@@ -31,6 +32,7 @@ export const DEFAULT_STATE: MetadataState = {
   beta: false,
   siteSettings: {
     brandName: "Watch",
+    defaultRoomName: "اتاق تماشا",
     landingEnabled: true,
   },
   refreshSiteSettings: async () => {},

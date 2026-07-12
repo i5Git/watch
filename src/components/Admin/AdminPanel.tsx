@@ -57,6 +57,9 @@ export const AdminPanel = () => {
   const [resetUser, setResetUser] = useState<ManagedUser | null>(null);
   const [resetPassword, setResetPassword] = useState("");
   const [brandName, setBrandName] = useState(siteSettings.brandName);
+  const [defaultRoomName, setDefaultRoomName] = useState(
+    siteSettings.defaultRoomName,
+  );
   const [landingEnabled, setLandingEnabled] = useState(
     siteSettings.landingEnabled,
   );
@@ -78,6 +81,7 @@ export const AdminPanel = () => {
 
   useEffect(() => {
     setBrandName(siteSettings.brandName);
+    setDefaultRoomName(siteSettings.defaultRoomName);
     setLandingEnabled(siteSettings.landingEnabled);
   }, [siteSettings]);
 
@@ -88,7 +92,7 @@ export const AdminPanel = () => {
     try {
       await request("/api/admin/site-settings", {
         method: "PATCH",
-        body: JSON.stringify({ brandName, landingEnabled }),
+        body: JSON.stringify({ brandName, defaultRoomName, landingEnabled }),
       });
       await refreshSiteSettings();
       setNotice("تنظیمات سایت ذخیره شد.");
@@ -251,6 +255,15 @@ export const AdminPanel = () => {
                 value={brandName}
                 maxLength={50}
                 onChange={(event) => setBrandName(event.currentTarget.value)}
+              />
+              <TextInput
+                label="نام پیش‌فرض اتاق"
+                description="وقتی اتاق عنوان جداگانه‌ای ندارد، این نام نمایش داده می‌شود."
+                value={defaultRoomName}
+                maxLength={50}
+                onChange={(event) =>
+                  setDefaultRoomName(event.currentTarget.value)
+                }
               />
               <Switch
                 checked={landingEnabled}

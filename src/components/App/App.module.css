@@ -162,15 +162,24 @@
     max(4px, env(safe-area-inset-bottom))
     max(4px, env(safe-area-inset-left));
   pointer-events: auto;
+  visibility: visible;
+  opacity: 1;
   transition:
     opacity 180ms ease,
-    transform 180ms ease;
+    visibility 0s linear;
 }
 
 .fullscreenControlsHidden {
   opacity: 0;
-  transform: translateY(100%);
+  visibility: hidden;
   pointer-events: none;
+  transition:
+    opacity 180ms ease,
+    visibility 0s linear 180ms;
+}
+
+.fullscreenControlsHidden * {
+  pointer-events: none !important;
 }
 
 .fullscreenMessageToast {

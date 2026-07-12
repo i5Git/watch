@@ -6,48 +6,188 @@
 
 .controls {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 54px;
-  padding: 8px 12px;
-  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  flex-direction: column;
+  gap: 7px;
+  width: 100%;
+  padding: 10px 14px;
   color: var(--watch-text);
-  background: linear-gradient(180deg, transparent, rgba(5, 9, 18, 0.9) 30%);
+  background: linear-gradient(180deg, rgba(5, 9, 18, 0.52), rgba(5, 9, 18, 0.94));
+  border-top: 1px solid rgba(255, 255, 255, 0.11);
+  box-shadow: 0 -12px 32px rgba(0, 0, 0, 0.18);
   direction: ltr;
 }
 
 .fullscreen {
-  min-height: 58px;
-  border-top-color: rgba(255, 255, 255, 0.16);
-  background: linear-gradient(180deg, transparent, rgba(5, 9, 18, 0.94) 32%);
+  width: min(760px, calc(100% - 24px));
+  margin: 0 auto 8px;
+  padding: 10px 14px 11px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 18px;
+  background: rgba(8, 13, 24, 0.82);
+  box-shadow:
+    0 16px 50px rgba(0, 0, 0, 0.46),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(20px) saturate(135%);
+  -webkit-backdrop-filter: blur(20px) saturate(135%);
 }
 
-.syncButton {
+.timelineRow,
+.actionRow,
+.primaryActions,
+.secondaryActions,
+.volumeControl {
+  display: flex;
+  align-items: center;
+}
+
+.timelineRow {
+  gap: 9px;
+  min-width: 0;
+}
+
+.timeline {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 56px;
+  height: 5px;
+  overflow: visible;
+  cursor: pointer;
+}
+
+.time {
+  flex: 0 0 auto;
+  color: var(--watch-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+}
+
+.buffer {
+  position: absolute;
+  bottom: 0;
+  z-index: 0;
+  height: 5px;
+  background: rgba(255, 255, 255, 0.2);
+  pointer-events: none;
+}
+
+.hoverTimestamp {
+  position: absolute;
+  bottom: 13px;
+  z-index: 3;
+  transform: translateX(-50%);
+}
+
+.liveBadge {
   flex: 0 0 auto;
 }
 
-.text {
-  color: var(--watch-muted);
-  font-size: 11px;
-  font-weight: 700;
-  white-space: nowrap;
+.actionRow {
+  justify-content: space-between;
+  gap: 12px;
 }
 
-.action {
-  color: var(--watch-text);
+.primaryActions,
+.secondaryActions,
+.volumeControl {
+  gap: 7px;
+}
+
+.secondaryActions {
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.actionButton {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  color: rgba(248, 250, 255, 0.92);
+  background: transparent;
   cursor: pointer;
   transition:
     color 160ms ease,
+    background-color 160ms ease,
+    border-color 160ms ease,
     transform 160ms ease;
+  -webkit-tap-highlight-color: transparent;
 }
 
-.action:hover {
-  color: var(--watch-coral);
-  transform: translateY(-1px);
+.actionButton:hover,
+.actionButton:focus-visible {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.actionButton:active {
+  transform: scale(0.94);
+}
+
+.actionButton:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+.playButton {
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 14px;
+  color: #171016;
+  background: linear-gradient(135deg, #ff9a8f, var(--watch-coral));
+  box-shadow: 0 8px 22px rgba(255, 120, 112, 0.28);
+}
+
+.playButton:hover,
+.playButton:focus-visible {
+  color: #171016;
+  background: linear-gradient(135deg, #ffaaa1, #ff8179);
+}
+
+.syncButton {
+  height: 38px;
+  padding-inline: 10px;
+  border-radius: 12px;
+  color: rgba(248, 250, 255, 0.76);
+  background: rgba(255, 255, 255, 0.055);
+}
+
+.syncButton :global(.mantine-Button-label) {
+  gap: 6px;
+}
+
+.syncNeeded {
+  color: #fff;
+  background: rgba(91, 141, 239, 0.2);
+}
+
+.rateButton {
+  width: auto;
+  min-width: 46px;
+  padding-inline: 7px;
+  color: rgba(248, 250, 255, 0.78);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.activeAction {
+  color: #84e7a4;
+  background: rgba(78, 203, 122, 0.12);
+}
+
+.volumeControl {
+  direction: ltr;
 }
 
 .volumeSlider {
-  width: 100px;
+  width: 88px;
   direction: ltr;
 }
 
@@ -71,45 +211,97 @@
 
 @media (max-width: 720px) {
   .controls {
-    gap: 5px;
-    padding: 7px 6px;
-    overflow: hidden;
+    gap: 7px;
+    padding: 9px 10px;
   }
 
   .controls.fullscreen {
-    min-height: 56px;
+    width: calc(100% - 16px);
+    margin-bottom: 5px;
+    padding: 9px 10px 10px;
+    border-radius: 16px;
+  }
+
+  .actionRow {
+    gap: 6px;
+  }
+
+  .primaryActions,
+  .secondaryActions,
+  .volumeControl {
     gap: 4px;
-    padding-block: 6px;
   }
 
-  .controls.fullscreen .text {
-    font-size: 10px;
+  .actionButton {
+    width: 36px;
+    height: 36px;
+    border-radius: 11px;
   }
 
-  .controls.fullscreen .syncButton {
-    min-width: 0;
-    padding-inline: 6px;
-    font-size: 10px;
+  .playButton {
+    width: 42px;
+    height: 42px;
   }
 
-  .controls.fullscreen .volumeSlider {
-    width: 64px !important;
+  .syncButton {
+    height: 36px;
+    padding-inline: 8px;
   }
 
-  .controls.fullscreen .action {
-    flex: 0 0 auto;
+  .volumeSlider {
+    width: 58px;
   }
-
-  .controls.fullscreen :global(.mantine-Progress-root) {
-    min-width: 0;
-  }
-
 }
 
-@media (max-width: 420px) {
-  .controls.fullscreen .syncButton,
-  .controls.fullscreen .volumeSlider {
+@media (max-width: 560px) {
+  .fullscreen .syncButton span {
     display: none;
   }
 
+  .fullscreen .syncButton {
+    width: 36px;
+    min-width: 36px;
+    padding: 0;
+  }
+
+  .fullscreen .optionalAction,
+  .fullscreen .theaterAction,
+  .fullscreen .volumeSlider {
+    display: none;
+  }
+
+  .fullscreen .actionRow {
+    justify-content: center;
+  }
+
+  .fullscreen .secondaryActions {
+    flex: 0 1 auto;
+  }
+}
+
+@media (max-width: 390px) {
+  .fullscreen {
+    padding-inline: 8px;
+  }
+
+  .fullscreen .actionButton {
+    width: 34px;
+    height: 34px;
+  }
+
+  .fullscreen .playButton {
+    width: 40px;
+    height: 40px;
+  }
+
+  .fullscreen .syncButton {
+    width: 34px;
+    min-width: 34px;
+    height: 34px;
+  }
+
+  .fullscreen .rateButton {
+    min-width: 42px;
+    padding-inline: 5px;
+  }
 }

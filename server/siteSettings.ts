@@ -4,11 +4,13 @@ import config from "./config.ts";
 
 export interface SiteSettings {
   brandName: string;
+  defaultRoomName: string;
   landingEnabled: boolean;
 }
 
 const defaults: SiteSettings = {
   brandName: "Watch",
+  defaultRoomName: "اتاق تماشا",
   landingEnabled: true,
 };
 
@@ -22,8 +24,14 @@ const sanitize = (input: Partial<SiteSettings>): SiteSettings => {
   const brandName = String(input.brandName ?? defaults.brandName)
     .trim()
     .slice(0, 50);
+  const defaultRoomName = String(
+    input.defaultRoomName ?? defaults.defaultRoomName,
+  )
+    .trim()
+    .slice(0, 50);
   return {
     brandName: brandName || defaults.brandName,
+    defaultRoomName: defaultRoomName || defaults.defaultRoomName,
     landingEnabled:
       typeof input.landingEnabled === "boolean"
         ? input.landingEnabled

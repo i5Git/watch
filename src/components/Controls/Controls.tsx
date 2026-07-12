@@ -1,21 +1,20 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Badge, Button, Menu, Progress, Slider } from "@mantine/core";
-import { formatTimestamp, softWhite } from "../../utils/utils";
-import styles from "./Controls.module.css";
-import { MetadataContext } from "../../MetadataContext";
 import {
-  IconPlayerPlayFilled,
-  IconPlayerPauseFilled,
-  IconRefresh,
-  IconCheck,
-  IconRepeat,
   IconBadgeCc,
-  IconVolumeOff,
-  IconVolume,
-  IconTheater,
+  IconCheck,
   IconMaximize,
+  IconPlayerPauseFilled,
+  IconPlayerPlayFilled,
   IconPlayerSkipForwardFilled,
+  IconRefresh,
+  IconRepeat,
+  IconTheater,
+  IconVolume,
+  IconVolumeOff,
 } from "@tabler/icons-react";
+import { formatTimestamp } from "../../utils/utils";
+import styles from "./Controls.module.css";
 
 interface ControlsProps {
   duration: number;
@@ -56,36 +55,20 @@ export const Controls = (props: ControlsProps) => {
   });
   const [showTimestamp, setShowTimestamp] = useState(false);
   const [volumeValue, setVolumeValue] = useState(props.volume);
+
   useEffect(() => {
     setVolumeValue(props.volume);
   }, [props.volume]);
+
   const getEnd = () => props.duration;
-  const getStart = () => 0;
-  const getLength = () => getEnd() - getStart();
+  const getLength = () => getEnd();
   const getCurrent = () => props.currentTime;
-  const getPercent = () => (getCurrent() - getStart()) / getLength();
+  const getPercent = () => getCurrent() / getLength();
   const zeroTime = useMemo(
     () => Math.floor(Date.now() / 1000) - props.duration,
     [props.video, Boolean(props.duration)],
   );
-  const onMouseOver = () => {
-    setShowTimestamp(true);
-  };
-  const onMouseOut = () => {
-    setShowTimestamp(false);
-  };
-  const onMouseMove = (e: any) => {
-    const rect = e.target.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const max = rect.width;
-    const pct = x / max;
-    // console.log(x, max);
-    const target = getStart() + pct * getLength();
-    // console.log(pct);
-    if (pct >= 0) {
-      setHoverState({ hoverTimestamp: target, hoverPos: pct });
-    }
-  };
+
   const {
     roomTogglePlay,
     roomSeek,
@@ -93,14 +76,12 @@ export const Controls = (props: ControlsProps) => {
     localToggleMute,
     localSubtitleModal,
     localSeek,
-    currentTime,
     leaderTime,
     isPauseDisabled,
     disabled,
     subtitled,
     paused,
     muted,
-    volume,
     isLiveStream,
     playlist,
     roomPlaylistPlay,
@@ -108,287 +89,273 @@ export const Controls = (props: ControlsProps) => {
     roomSetPlaybackRate,
     roomPlaybackRate,
   } = props;
-  // console.log(leaderTime, currentTime);
-  const behindThreshold = 10;
+
   const behindTime =
     !isLiveStream && leaderTime && leaderTime < Infinity
-      ? leaderTime - currentTime
+      ? leaderTime - getCurrent()
       : getEnd() - getCurrent();
-  const isBehind = behindTime > behindThreshold;
+  const isBehind = behindTime > 10;
   const buffers = timeRanges.map(({ start, end }) => {
     const buffStartPct = (start / getLength()) * 100;
     const buffLengthPct = ((end - start) / getLength()) * 100;
     return (
       <div
         key={start}
-        style={{
-          position: "absolute",
-          height: "8px",
-          backgroundColor: "grey",
-          left: buffStartPct + "%",
-          width: buffLengthPct + "%",
-          bottom: "0em",
-          zIndex: 0,
-          pointerEvents: "none",
-        }}
-      ></div>
+        className={styles.buffer}
+        style={{ left: `${buffStartPct}%`, width: `${buffLengthPct}%` }}
+      />
     );
   });
-  const playPauseProps = {
-    onClick: () => {
-      roomTogglePlay();
-    },
-    className: ` ${styles.action}`,
-    disabled: disabled || isPauseDisabled,
+
+  const updateHover = (event: React.MouseEvent<HTMLDivElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const percent = Math.min(
+      1,
+      Math.max(0, (event.clientX - rect.left) / rect.width),
+    );
+    setHoverState({
+      hoverTimestamp: percent * getLength(),
+      hoverPos: percent,
+    });
   };
 
+  const seekFromPointer = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (disabled || !Number.isFinite(getLength()) || getLength() <= 0) {
+      return;
+    }
+    const rect = event.currentTarget.getBoundingClientRect();
+    const percent = Math.min(
+      1,
+      Math.max(0, (event.clientX - rect.left) / rect.width),
+    );
+    roomSeek(getLength() * percent);
+  };
+
+  const actionClassName = (secondaryClass?: string) =>
+    [styles.actionButton, secondaryClass].filter(Boolean).join(" ");
+
   return (
-    <div className={`${styles.controls} ${props.fullscreen ? styles.fullscreen : ""}`}>
-      {paused ? (
-        <IconPlayerPlayFilled {...playPauseProps} />
-      ) : (
-        <IconPlayerPauseFilled {...playPauseProps} />
-      )}
-      {playlist.length > 0 && (
-        <IconPlayerSkipForwardFilled
-          title="پخش بعدی"
-          className={styles.action}
-          onClick={() => roomPlaylistPlay(0)}
-        />
-      )}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          flexDirection: "column",
-          position: "relative",
-        }}
-      >
-        <Button
-          size="compact-xs"
-          className={styles.syncButton}
-          color={isBehind ? "blue" : "grey"}
-          title="همگام‌سازی"
-          onClick={() => {
-            if (isLiveStream) {
-              // in live case we want to seek the entire room to edge
-              roomSeek(props.duration);
-            } else {
-              localSeek();
-            }
-          }}
+    <div
+      className={`${styles.controls} ${props.fullscreen ? styles.fullscreen : ""}`}
+      dir="ltr"
+    >
+      <div className={styles.timelineRow}>
+        <span className={styles.time}>
+          {formatTimestamp(getCurrent(), isLiveStream ? zeroTime : undefined)}
+        </span>
+        <Progress.Root
+          className={styles.timeline}
+          radius="xl"
+          onClick={seekFromPointer}
+          onMouseEnter={() => setShowTimestamp(true)}
+          onMouseLeave={() => setShowTimestamp(false)}
+          onMouseMove={updateHover}
+          aria-label="نوار زمان پخش"
         >
-          همگام‌سازی
-        </Button>
-        {/* <div style={{ position: 'absolute', fontSize: '6px', zIndex: -1 }}>
-            {Math.max(Math.floor(behindTime), 0)}
-          </div> */}
-      </div>
-      <div className={` ${styles.text}`}>
-        {formatTimestamp(getCurrent(), isLiveStream ? zeroTime : undefined)}
-      </div>
-      <Progress.Root
-        radius="0px"
-        onClick={(e: any) => {
-          if (!disabled) {
-            // Read the time from the click event
-            if (e) {
-              const rect = e.target.getBoundingClientRect();
-              const x = e.clientX - rect.left;
-              const max = rect.width;
-              const pct = x / max;
-              // roomseek operates on actual media element times, not timestamps
-              // for DASH we set getStart() value to when stream started, so left side is 0 video time
-              // even though it's not all seekable this makes the click to seek simple
-              let target = getLength() * pct;
-              roomSeek(target);
-            }
-          }
-        }}
-        onMouseOver={onMouseOver}
-        onMouseOut={onMouseOut}
-        onMouseMove={onMouseMove}
-        style={{
-          flexGrow: 1,
-          marginTop: 0,
-          marginBottom: 0,
-          position: "relative",
-          minWidth: "50px",
-          overflow: "visible",
-          cursor: "pointer",
-        }}
-      >
-        <Progress.Section
-          style={{ pointerEvents: "none", zIndex: 1 }}
-          value={getPercent() * 100}
-        ></Progress.Section>
-        {buffers}
-        {/* {
-            <div
-              style={{
-                position: 'absolute',
-                bottom: '0px',
-                left: `calc(${this.getPercent() * 100 + '% - 6px'})`,
-                pointerEvents: 'none',
-                width: '12px',
-                height: '12px',
-                transform:
-                  this.getLength() < Infinity && showTimestamp
-                    ? 'scale(1, 1)'
-                    : 'scale(0, 0)',
-                transition: '0.25s all',
-                borderRadius: '50%',
-                backgroundColor: '#54c8ff',
-              }}
-            ></div>
-          } */}
-        {getLength() < Infinity && showTimestamp && (
-          <Badge
-            style={{
-              position: "absolute",
-              bottom: "10px",
-              left: `calc(${hoverState.hoverPos * 100 + "%"})`,
-              transform: "translate(-50%)",
-              display: "inline-block",
-            }}
-          >
-            {formatTimestamp(
-              hoverState.hoverTimestamp,
-              isLiveStream ? zeroTime : undefined,
-            )}
+          <Progress.Section
+            style={{ pointerEvents: "none", zIndex: 1 }}
+            value={Number.isFinite(getPercent()) ? getPercent() * 100 : 0}
+          />
+          {buffers}
+          {getLength() < Infinity && showTimestamp && (
+            <Badge
+              className={styles.hoverTimestamp}
+              style={{ left: `${hoverState.hoverPos * 100}%` }}
+            >
+              {formatTimestamp(
+                hoverState.hoverTimestamp,
+                isLiveStream ? zeroTime : undefined,
+              )}
+            </Badge>
+          )}
+        </Progress.Root>
+        <span className={styles.time}>{formatTimestamp(getEnd())}</span>
+        {isLiveStream && (
+          <Badge className={styles.liveBadge} size="xs" color="red">
+            زنده
           </Badge>
         )}
-      </Progress.Root>
-      <div className={` ${styles.text}`}>{formatTimestamp(getEnd())}</div>
-      {isLiveStream && (
-          <Badge size="xs" color="red">
-          زنده
-        </Badge>
-      )}
-      {
-        <Menu disabled={disabled}>
-          <Menu.Target>
-            <div
-              className={`${styles.text} ${styles.action}`}
-              style={{
-                backgroundColor: "rgba(100,100,100, 0.6)",
-                fontSize: 10,
-                borderRadius: "4px",
-                padding: "2px",
-              }}
+      </div>
+
+      <div className={styles.actionRow}>
+        <div className={styles.primaryActions}>
+          <button
+            type="button"
+            className={`${styles.actionButton} ${styles.playButton}`}
+            onClick={roomTogglePlay}
+            disabled={disabled || isPauseDisabled}
+            aria-label={paused ? "پخش" : "توقف"}
+            title={paused ? "پخش" : "توقف"}
+          >
+            {paused ? (
+              <IconPlayerPlayFilled size={21} />
+            ) : (
+              <IconPlayerPauseFilled size={21} />
+            )}
+          </button>
+          {playlist.length > 0 && (
+            <button
+              type="button"
+              className={actionClassName(styles.optionalAction)}
+              onClick={() => roomPlaylistPlay(0)}
+              aria-label="پخش بعدی"
+              title="پخش بعدی"
             >
-              {props.playbackRate?.toFixed(2)}×
+              <IconPlayerSkipForwardFilled size={19} />
+            </button>
+          )}
+          <Button
+            size="compact-sm"
+            className={`${styles.syncButton} ${isBehind ? styles.syncNeeded : ""}`}
+            variant="subtle"
+            title="همگام‌سازی با پخش اتاق"
+            onClick={() =>
+              isLiveStream ? roomSeek(props.duration) : localSeek()
+            }
+          >
+            <IconRefresh size={16} />
+            <span>همگام‌سازی</span>
+          </Button>
+        </div>
+
+        <div className={styles.secondaryActions}>
+          <Menu disabled={disabled}>
+            <Menu.Target>
+              <button
+                type="button"
+                className={`${styles.actionButton} ${styles.rateButton}`}
+                aria-label="سرعت پخش"
+                title="سرعت پخش"
+              >
+                {props.playbackRate?.toFixed(2)}×
+              </button>
+            </Menu.Target>
+            <Menu.Dropdown>
+              {[
+                { key: "Auto", text: "خودکار", value: 0 },
+                { key: "0.25", text: "۰٫۲۵×", value: 0.25 },
+                { key: "0.5", text: "۰٫۵×", value: 0.5 },
+                { key: "1", text: "۱×", value: 1 },
+                { key: "1.5", text: "۱٫۵×", value: 1.5 },
+                { key: "2", text: "۲×", value: 2 },
+                { key: "3", text: "۳×", value: 3 },
+              ].map((item) => (
+                <Menu.Item
+                  key={item.key}
+                  onClick={() => roomSetPlaybackRate(item.value)}
+                  rightSection={
+                    roomPlaybackRate === item.value ? <IconCheck /> : null
+                  }
+                >
+                  {item.text}
+                </Menu.Item>
+              ))}
+            </Menu.Dropdown>
+          </Menu>
+
+          <button
+            type="button"
+            className={`${actionClassName(styles.optionalAction)} ${
+              props.loop ? styles.activeAction : ""
+            }`}
+            onClick={() => !disabled && props.roomSetLoop(!props.loop)}
+            aria-label="تکرار"
+            title="تکرار"
+          >
+            <IconRepeat size={19} />
+          </button>
+
+          {props.isYouTube ? (
+            <Menu>
+              <Menu.Target>
+                <button
+                  type="button"
+                  className={actionClassName()}
+                  aria-label="زیرنویس"
+                  title="زیرنویس"
+                >
+                  <IconBadgeCc size={21} />
+                </button>
+              </Menu.Target>
+              <Menu.Dropdown>
+                {[
+                  { key: "hidden", text: "خاموش", value: "hidden" },
+                  { key: "en", text: "English", value: "showing" },
+                  { key: "es", text: "Spanish", value: "showing" },
+                ].map((item) => (
+                  <Menu.Item
+                    key={item.key}
+                    onClick={() =>
+                      props.localSetSubtitleMode(
+                        item.value as TextTrackMode,
+                        item.key,
+                      )
+                    }
+                  >
+                    {item.text}
+                  </Menu.Item>
+                ))}
+              </Menu.Dropdown>
+            </Menu>
+          ) : (
+            <button
+              type="button"
+              className={`${actionClassName()} ${
+                subtitled ? styles.activeAction : ""
+              }`}
+              onClick={localSubtitleModal}
+              aria-label="زیرنویس"
+              title="زیرنویس"
+            >
+              <IconBadgeCc size={21} />
+            </button>
+          )}
+
+          <button
+            type="button"
+            className={actionClassName(styles.theaterAction)}
+            onClick={() => localFullScreen(false)}
+            aria-label="حالت سینمایی"
+            title="حالت سینمایی"
+          >
+            <IconTheater size={20} />
+          </button>
+          {!props.fullscreen && (
+            <button
+              type="button"
+              className={actionClassName()}
+              onClick={() => localFullScreen(true)}
+              aria-label="تمام صفحه"
+              title="تمام صفحه"
+            >
+              <IconMaximize size={20} />
+            </button>
+          )}
+
+          <div className={styles.volumeControl}>
+            <button
+              type="button"
+              className={actionClassName()}
+              onClick={localToggleMute}
+              aria-label={muted ? "وصل کردن صدا" : "بی‌صدا"}
+              title={muted ? "وصل کردن صدا" : "بی‌صدا"}
+            >
+              {muted ? <IconVolumeOff size={21} /> : <IconVolume size={21} />}
+            </button>
+            <div className={styles.volumeSlider} dir="ltr">
+              <Slider
+                value={volumeValue}
+                disabled={muted}
+                min={0}
+                max={1}
+                step={0.01}
+                onChange={setVolumeValue}
+                onChangeEnd={props.localSetVolume}
+                aria-label="بلندی صدا"
+              />
             </div>
-          </Menu.Target>
-          <Menu.Dropdown>
-            {[
-              { key: "Auto", text: "خودکار", value: 0 },
-              { key: "0.25", text: "۰٫۲۵×", value: 0.25 },
-              { key: "0.5", text: "۰٫۵×", value: 0.5 },
-              // { key: '0.75', text: '0.75x', value: 0.75 },
-              { key: "1", text: "۱×", value: 1 },
-              // { key: '1.25', text: '1.25x', value: 1.25 },
-              { key: "1.5", text: "۱٫۵×", value: 1.5 },
-              // { key: '1.75', text: '1.75x', value: 1.75 },
-              { key: "2", text: "۲×", value: 2 },
-              { key: "3", text: "۳×", value: 3 },
-            ].map((item) => (
-              <Menu.Item
-                key={item.key}
-                onClick={() => roomSetPlaybackRate(item.value)}
-                rightSection={
-                  roomPlaybackRate === item.value ? <IconCheck /> : null
-                }
-              >
-                {item.text}
-              </Menu.Item>
-            ))}
-          </Menu.Dropdown>
-        </Menu>
-      }
-      <IconRepeat
-        onClick={() => {
-          if (!disabled) {
-            props.roomSetLoop(Boolean(!props.loop));
-          }
-        }}
-        className={` ${styles.action}`}
-        title="حلقه"
-        color={props.loop ? "green" : softWhite}
-      />
-      {props.isYouTube ? (
-        <Menu>
-          <Menu.Target>
-          <IconBadgeCc className={styles.action} title="زیرنویس" />
-          </Menu.Target>
-          <Menu.Dropdown>
-            {[
-              { key: "hidden", text: "Off", value: "hidden" },
-              { key: "en", text: "English", value: "showing" },
-              { key: "es", text: "Spanish", value: "showing" },
-            ].map((item) => (
-              <Menu.Item
-                key={item.key}
-                onClick={() =>
-                  props.localSetSubtitleMode(
-                    item.value as TextTrackMode,
-                    item.key,
-                  )
-                }
-              >
-                {item.text}
-              </Menu.Item>
-            ))}
-          </Menu.Dropdown>
-        </Menu>
-      ) : (
-        <IconBadgeCc
-          onClick={() => {
-            localSubtitleModal();
-          }}
-          className={` ${styles.action}`}
-          title="زیرنویس"
-          color={subtitled ? "green" : softWhite}
-        />
-      )}
-      <IconTheater
-        onClick={() => localFullScreen(false)}
-        className={` ${styles.action}`}
-        title="حالت سینمایی"
-      />
-      <IconMaximize
-        onClick={() => localFullScreen(true)}
-        className={` ${styles.action}`}
-        title="تمام صفحه"
-      />
-      {muted ? (
-        <IconVolumeOff
-          onClick={() => {
-            localToggleMute();
-          }}
-          className={` ${styles.action}`}
-        />
-      ) : (
-        <IconVolume
-          onClick={() => {
-            localToggleMute();
-          }}
-          className={` ${styles.action}`}
-        />
-      )}
-      <div className={styles.volumeSlider} dir="ltr">
-        <Slider
-          value={volumeValue}
-          disabled={muted}
-          min={0}
-          max={1}
-          step={0.01}
-          onChange={setVolumeValue}
-          onChangeEnd={(value: number) => {
-            props.localSetVolume(value);
-          }}
-        />
+          </div>
+        </div>
       </div>
     </div>
   );

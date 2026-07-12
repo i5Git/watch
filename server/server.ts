@@ -213,6 +213,7 @@ app.patch("/api/admin/site-settings", requireAdmin, (req, res) => {
     res.json(
       updateSiteSettings({
         brandName: req.body?.brandName,
+        defaultRoomName: req.body?.defaultRoomName,
         landingEnabled: req.body?.landingEnabled,
       }),
     );
