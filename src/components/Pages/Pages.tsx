@@ -1,4 +1,5 @@
-import React from "react";
+import React, { useContext } from "react";
+import { MetadataContext } from "../../MetadataContext";
 
 const pageStyle: React.CSSProperties = {
   width: "min(900px, calc(100% - 32px))",
@@ -13,18 +14,24 @@ const Page = ({ children }: { children: React.ReactNode }) => (
   </article>
 );
 
-export const Privacy = () => (
-  <Page>
+export const Privacy = () => {
+  const { siteSettings } = useContext(MetadataContext);
+  return <Page>
     <h1>حریم خصوصی</h1>
     <h2>اتاق‌ها</h2>
     <ul>
       <li>اتاق‌های بدون فعالیت پس از مدتی آزاد می‌شوند.</li>
-      <li>محتوای ویدیو برای گزارش‌های تحلیلی Watch ذخیره نمی‌شود.</li>
+      <li>
+        محتوای ویدیو برای گزارش‌های تحلیلی {siteSettings.brandName} ذخیره
+        نمی‌شود.
+      </li>
       <li>پیام‌های اتاق فقط برای همگام‌سازی همان اتاق نگهداری می‌شوند.</li>
     </ul>
     <h2>حساب‌های دسترسی</h2>
     <ul>
-      <li>دسترسی به Watch توسط مدیر سایت ساخته و مدیریت می‌شود.</li>
+      <li>
+        دسترسی به {siteSettings.brandName} توسط مدیر سایت ساخته و مدیریت می‌شود.
+      </li>
       <li>رمز عبور کاربران به‌صورت هش‌شده در VPS نگهداری می‌شود.</li>
       <li>اطلاعات دسترسی یا پیام‌های شما به اشخاص ثالث فروخته نمی‌شود.</li>
     </ul>
@@ -33,21 +40,24 @@ export const Privacy = () => (
       فایل‌هایی که در اتاق آپلود می‌کنید روی فضای ذخیره‌سازی VPS شما قرار می‌گیرند.
       قبل از اشتراک‌گذاری، مطمئن شوید اجازه استفاده و پخش آن‌ها را دارید.
     </p>
-  </Page>
-);
+  </Page>;
+};
 
-export const Terms = () => (
-  <Page>
+export const Terms = () => {
+  const { siteSettings } = useContext(MetadataContext);
+  return <Page>
     <h1>قوانین استفاده</h1>
-    <p>با استفاده از Watch با موارد زیر موافقت می‌کنید:</p>
+    <p>با استفاده از {siteSettings.brandName} با موارد زیر موافقت می‌کنید:</p>
     <ul>
       <li>فقط محتوایی را پخش کنید که اجازه استفاده از آن را دارید.</li>
       <li>از سرویس برای محتوای غیرقانونی یا ناقض حقوق دیگران استفاده نکنید.</li>
       <li>امنیت نام کاربری و رمز عبور خود را حفظ کنید.</li>
-      <li>Watch دسترسی دائمی یا بدون خطا را تضمین نمی‌کند.</li>
+      <li>
+        {siteSettings.brandName} دسترسی دائمی یا بدون خطا را تضمین نمی‌کند.
+      </li>
     </ul>
-  </Page>
-);
+  </Page>;
+};
 
 export const FAQ = () => (
   <Page>

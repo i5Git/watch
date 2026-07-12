@@ -234,8 +234,8 @@ export class Room {
         return !owner || socket.uid === owner;
       };
 
-      socket.on("CMD:name", (data: unknown) =>
-        this.changeUserName(socket, String(data)),
+      socket.on("CMD:name", () =>
+        this.changeUserName(socket, socket.data.appUser.username),
       );
       socket.on("CMD:host", (data: unknown) => {
         validateLock() && this.startHosting(socket, String(data));

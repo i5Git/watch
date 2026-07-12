@@ -1,4 +1,4 @@
-import React, { FormEvent, useState } from "react";
+import React, { FormEvent, useContext, useState } from "react";
 import { Button, TextInput } from "@mantine/core";
 import {
   IconArrowLeft,
@@ -11,6 +11,7 @@ import {
 import { createRoom } from "../TopBar/TopBar";
 import { t } from "../../i18n";
 import styles from "./Home.module.css";
+import { MetadataContext } from "../../MetadataContext";
 
 const features = [
   {
@@ -55,7 +56,9 @@ const steps = [
 ];
 
 export const Home = () => {
+  const { siteSettings } = useContext(MetadataContext);
   const [source, setSource] = useState("");
+  const [roomUrl, setRoomUrl] = useState("");
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState("");
 
@@ -72,8 +75,7 @@ export const Home = () => {
     }
   };
 
-  const joinRoom = () => {
-    const value = window.prompt("لینک اتاق را وارد کنید:");
+  const openRoom = (value: string) => {
     if (!value) {
       return;
     }
@@ -88,6 +90,46 @@ export const Home = () => {
       setError("این لینک معتبر نیست.");
     }
   };
+
+  const joinRoom = () => {
+    const value = window.prompt("لینک اتاق را وارد کنید:");
+    if (value) {
+      openRoom(value);
+    }
+  };
+
+  if (!siteSettings.landingEnabled) {
+    return (
+      <main className={styles.simpleJoinPage} dir="rtl">
+        <form
+          className={styles.simpleJoinCard}
+          onSubmit={(event) => {
+            event.preventDefault();
+            setError("");
+            openRoom(roomUrl.trim());
+          }}
+        >
+          <span className={styles.heroPlayMark}>
+            <IconPlayerPlayFilled size={20} />
+          </span>
+          <h1>{siteSettings.brandName}</h1>
+          <p>لینک اتاق را وارد کنید.</p>
+          <TextInput
+            required
+            value={roomUrl}
+            onChange={(event) => setRoomUrl(event.currentTarget.value)}
+            placeholder={`${window.location.origin}/watch/...`}
+            leftSection={<IconLink size={18} />}
+            dir="ltr"
+          />
+          <Button type="submit" leftSection={<IconArrowLeft size={18} />}>
+            ورود به اتاق
+          </Button>
+          {error && <div className={styles.error}>{error}</div>}
+        </form>
+      </main>
+    );
+  }
 
   return (
     <main className={styles.homePage} dir="rtl">
@@ -138,7 +180,7 @@ export const Home = () => {
           <div className={styles.previewFrame}>
             <img
               src="/watch-room-preview.png"
-              alt="پیش‌نمایش اتاق تماشای Watch"
+              alt={`پیش‌نمایش اتاق تماشای ${siteSettings.brandName}`}
             />
           </div>
         </div>

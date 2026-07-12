@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Badge, Button, Menu, Progress, Slider } from "@mantine/core";
 import { formatTimestamp, softWhite } from "../../utils/utils";
 import styles from "./Controls.module.css";
@@ -55,6 +55,10 @@ export const Controls = (props: ControlsProps) => {
     hoverPos: 0,
   });
   const [showTimestamp, setShowTimestamp] = useState(false);
+  const [volumeValue, setVolumeValue] = useState(props.volume);
+  useEffect(() => {
+    setVolumeValue(props.volume);
+  }, [props.volume]);
   const getEnd = () => props.duration;
   const getStart = () => 0;
   const getLength = () => getEnd() - getStart();
@@ -373,13 +377,14 @@ export const Controls = (props: ControlsProps) => {
           className={` ${styles.action}`}
         />
       )}
-      <div style={{ width: "100px" }}>
+      <div className={styles.volumeSlider} dir="ltr">
         <Slider
-          defaultValue={volume}
+          value={volumeValue}
           disabled={muted}
           min={0}
           max={1}
           step={0.01}
+          onChange={setVolumeValue}
           onChangeEnd={(value: number) => {
             props.localSetVolume(value);
           }}

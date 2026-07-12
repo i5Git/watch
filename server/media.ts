@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import config from "./config.ts";
@@ -31,6 +31,8 @@ const mediaDirectory = resolveDataPath(
 );
 const indexFile = path.join(mediaDirectory, "index.json");
 const maxUploadBytes = Number(config.UPLOAD_MAX_BYTES) || 20 * 1024 * 1024 * 1024;
+const activeConversions = new Set<ChildProcess>();
+let mediaCacheGeneration = 0;
 
 const ensureMediaDirectory = () => {
   fs.mkdirSync(mediaDirectory, { recursive: true });
@@ -96,6 +98,7 @@ export const uploadMedia = async (
   convertToMp4: boolean,
 ) => {
   ensureMediaDirectory();
+  const generation = mediaCacheGeneration;
   const originalName = safeName(String(originalNameInput || "video"));
   const id = crypto.randomUUID();
   const temporaryFilename = `${id}-${originalName}`;
@@ -118,6 +121,10 @@ export const uploadMedia = async (
     fs.rmSync(temporaryPath, { force: true });
     throw error;
   }
+  if (generation !== mediaCacheGeneration) {
+    fs.rmSync(temporaryPath, { force: true });
+    throw new Error("The media cache was cleared while this file was uploading.");
+  }
 
   const timestamp = new Date().toISOString();
   const record: MediaRecord = {
@@ -134,12 +141,12 @@ export const uploadMedia = async (
   };
   updateRecord(record);
   if (convertToMp4) {
-    void convertMedia(record);
+    void convertMedia(record, generation);
   }
   return record;
 };
 
-const convertMedia = async (record: MediaRecord) => {
+const convertMedia = async (record: MediaRecord, generation: number) => {
   const input = mediaPath(record.filename);
   const outputFilename = `${record.id}.mp4`;
   const output = mediaPath(outputFilename);
@@ -169,17 +176,27 @@ const convertMedia = async (record: MediaRecord) => {
       ],
       { stdio: ["ignore", "ignore", "pipe"] },
     );
+    activeConversions.add(process);
     let errorOutput = "";
     process.stderr.on("data", (chunk) => {
       errorOutput += String(chunk);
     });
     process.on("error", (error) => {
+      if (generation !== mediaCacheGeneration) {
+        resolve();
+        return;
+      }
       record.status = "error";
       record.error = error.message;
       updateRecord(record);
       resolve();
     });
     process.on("close", (code) => {
+      activeConversions.delete(process);
+      if (generation !== mediaCacheGeneration) {
+        resolve();
+        return;
+      }
       if (code === 0) {
         fs.rmSync(input, { force: true });
         record.filename = outputFilename;
@@ -199,6 +216,26 @@ const convertMedia = async (record: MediaRecord) => {
       resolve();
     });
   });
+};
+
+export const clearMediaCache = () => {
+  mediaCacheGeneration += 1;
+  for (const process of activeConversions) {
+    process.kill("SIGTERM");
+  }
+  activeConversions.clear();
+  ensureMediaDirectory();
+  let removedFiles = 0;
+  let removedBytes = 0;
+  for (const entry of fs.readdirSync(mediaDirectory, { withFileTypes: true })) {
+    const target = path.join(mediaDirectory, entry.name);
+    const stats = fs.statSync(target);
+    removedBytes += stats.isFile() ? stats.size : 0;
+    fs.rmSync(target, { recursive: true, force: true });
+    removedFiles += 1;
+  }
+  writeIndex([]);
+  return { removedFiles, removedBytes };
 };
 
 export const getMediaDirectory = () => {

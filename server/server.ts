@@ -38,8 +38,10 @@ import {
   getMedia,
   getMediaDirectory,
   listMedia,
+  clearMediaCache,
   uploadMedia,
 } from "./media.ts";
+import { getSiteSettings, updateSiteSettings } from "./siteSettings.ts";
 
 if (process.env.NODE_ENV === "development") {
   axios.interceptors.request.use(
@@ -176,6 +178,55 @@ app.get("/api/auth/session", (req, res) => {
     return;
   }
   res.json(user);
+});
+
+app.get("/api/site-settings", (_req, res) => {
+  res.json(getSiteSettings());
+});
+
+app.get("/manifest.webmanifest", (_req, res) => {
+  const { brandName } = getSiteSettings();
+  res.type("application/manifest+json").json({
+    id: "/",
+    name: brandName,
+    short_name: brandName.slice(0, 24),
+    description: "A private place to watch together.",
+    start_url: "/",
+    scope: "/",
+    display: "standalone",
+    background_color: "#050912",
+    theme_color: "#0b1020",
+    orientation: "any",
+    icons: [
+      {
+        src: "/logo192.png",
+        sizes: "192x192",
+        type: "image/png",
+        purpose: "any",
+      },
+    ],
+  });
+});
+
+app.patch("/api/admin/site-settings", requireAdmin, (req, res) => {
+  try {
+    res.json(
+      updateSiteSettings({
+        brandName: req.body?.brandName,
+        landingEnabled: req.body?.landingEnabled,
+      }),
+    );
+  } catch (error: any) {
+    res.status(400).json({ error: error?.message || "Unable to save settings." });
+  }
+});
+
+app.delete("/api/admin/media-cache", requireAdmin, (_req, res) => {
+  try {
+    res.json(clearMediaCache());
+  } catch (error: any) {
+    res.status(500).json({ error: error?.message || "Unable to clear media." });
+  }
 });
 
 app.get("/api/admin/users", requireAdmin, (_req, res) => {

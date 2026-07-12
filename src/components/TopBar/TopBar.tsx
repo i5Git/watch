@@ -85,7 +85,7 @@ export const AccountMenu = () => {
             href="/admin"
             leftSection={<IconShieldLock size={16} />}
           >
-            مدیریت کاربران
+            مدیریت سایت
           </Menu.Item>
         )}
         <Menu.Item
@@ -110,16 +110,17 @@ export const TopBar = (props: {
   roomDescription?: string;
   roomTitleColor?: string;
 }) => {
+  const { siteSettings } = useContext(MetadataContext);
   const isRoom = Boolean(props.roomTitle || props.roomDescription);
 
   return (
     <header className={styles.topBar} dir="rtl">
       <div className={styles.brandCluster}>
-        <a href="/" className={styles.brand} aria-label="Watch">
+        <a href="/" className={styles.brand} aria-label={siteSettings.brandName}>
           <span className={styles.brandMark}>
             <IconPlayerPlayFilled size={16} />
           </span>
-          <span>Watch</span>
+          <span>{siteSettings.brandName}</span>
         </a>
         {isRoom ? (
           <div className={styles.roomIdentity}>

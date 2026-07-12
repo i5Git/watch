@@ -6,15 +6,19 @@ import {
   Group,
   Modal,
   PasswordInput,
+  Switch,
   Table,
   Text,
   TextInput,
 } from "@mantine/core";
 import {
   IconCheck,
+  IconDatabaseX,
+  IconDeviceFloppy,
   IconKey,
   IconPlus,
   IconRefresh,
+  IconSettings,
   IconTrash,
   IconUserOff,
   IconUserPlus,
@@ -42,7 +46,8 @@ const request = async (url: string, options?: RequestInit) => {
 };
 
 export const AdminPanel = () => {
-  const { user } = useContext(MetadataContext);
+  const { user, siteSettings, refreshSiteSettings } =
+    useContext(MetadataContext);
   const [users, setUsers] = useState<ManagedUser[]>([]);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -51,6 +56,12 @@ export const AdminPanel = () => {
   const [error, setError] = useState("");
   const [resetUser, setResetUser] = useState<ManagedUser | null>(null);
   const [resetPassword, setResetPassword] = useState("");
+  const [brandName, setBrandName] = useState(siteSettings.brandName);
+  const [landingEnabled, setLandingEnabled] = useState(
+    siteSettings.landingEnabled,
+  );
+  const [settingsLoading, setSettingsLoading] = useState(false);
+  const [cacheLoading, setCacheLoading] = useState(false);
 
   const loadUsers = useCallback(async () => {
     setError("");
@@ -64,6 +75,54 @@ export const AdminPanel = () => {
   useEffect(() => {
     void loadUsers();
   }, [loadUsers]);
+
+  useEffect(() => {
+    setBrandName(siteSettings.brandName);
+    setLandingEnabled(siteSettings.landingEnabled);
+  }, [siteSettings]);
+
+  const saveSiteSettings = async () => {
+    setSettingsLoading(true);
+    setNotice("");
+    setError("");
+    try {
+      await request("/api/admin/site-settings", {
+        method: "PATCH",
+        body: JSON.stringify({ brandName, landingEnabled }),
+      });
+      await refreshSiteSettings();
+      setNotice("تنظیمات سایت ذخیره شد.");
+    } catch (settingsError: any) {
+      setError(settingsError?.message || "تنظیمات سایت ذخیره نشد.");
+    } finally {
+      setSettingsLoading(false);
+    }
+  };
+
+  const clearMedia = async () => {
+    if (
+      !window.confirm(
+        "همه فایل‌های رسانه‌ای آپلودشده و تبدیل‌شده از سرور حذف شوند؟",
+      )
+    ) {
+      return;
+    }
+    setCacheLoading(true);
+    setNotice("");
+    setError("");
+    try {
+      const result = await request("/api/admin/media-cache", {
+        method: "DELETE",
+      });
+      setNotice(
+        `کش رسانه پاک شد. ${Number(result.removedFiles || 0).toLocaleString("fa-IR")} مورد حذف شد.`,
+      );
+    } catch (cacheError: any) {
+      setError(cacheError?.message || "پاک‌سازی کش رسانه انجام نشد.");
+    } finally {
+      setCacheLoading(false);
+    }
+  };
 
   const createUser = async (event: FormEvent) => {
     event.preventDefault();
@@ -149,8 +208,10 @@ export const AdminPanel = () => {
       <main className={styles.page} dir="rtl">
         <div className={styles.heading}>
           <div>
-            <h1>مدیریت کاربران</h1>
-            <p>کاربرانی را که می‌توانند وارد فضای خصوصی Watch شوند مدیریت کنید.</p>
+            <h1>مدیریت سایت</h1>
+            <p>
+              کاربران، برند، صفحه اصلی و فایل‌های رسانه‌ای را مدیریت کنید.
+            </p>
           </div>
           <Button
             variant="subtle"
@@ -176,6 +237,62 @@ export const AdminPanel = () => {
             {error}
           </Alert>
         )}
+
+        <div className={styles.settingsGrid}>
+          <section className={styles.formPanel}>
+            <div className={styles.panelTitle}>
+              <IconSettings size={20} />
+              <h2>تنظیمات سایت</h2>
+            </div>
+            <div className={styles.settingsForm}>
+              <TextInput
+                label="نام برند"
+                description="در سربرگ، صفحه ورود و عنوان مرورگر نمایش داده می‌شود."
+                value={brandName}
+                maxLength={50}
+                onChange={(event) => setBrandName(event.currentTarget.value)}
+              />
+              <Switch
+                checked={landingEnabled}
+                onChange={(event) =>
+                  setLandingEnabled(event.currentTarget.checked)
+                }
+                label="نمایش صفحه اصلی کامل"
+                description="در حالت خاموش فقط کادر ورود لینک اتاق نمایش داده می‌شود."
+              />
+              <Button
+                className={styles.primaryButton}
+                loading={settingsLoading}
+                leftSection={<IconDeviceFloppy size={18} />}
+                onClick={saveSiteSettings}
+              >
+                ذخیره تنظیمات
+              </Button>
+            </div>
+          </section>
+
+          <section className={`${styles.formPanel} ${styles.dangerPanel}`}>
+            <div className={styles.panelTitle}>
+              <IconDatabaseX size={20} />
+              <h2>کش رسانه سرور</h2>
+            </div>
+            <div className={styles.settingsForm}>
+              <p className={styles.warningCopy}>
+                همه ویدیوهای آپلودشده، فایل‌های تبدیل‌شده و فهرست رسانه حذف
+                می‌شوند. حساب‌های کاربران حذف نخواهند شد.
+              </p>
+              <Button
+                color="red"
+                variant="light"
+                loading={cacheLoading}
+                leftSection={<IconTrash size={18} />}
+                onClick={clearMedia}
+              >
+                پاک‌کردن همه رسانه‌های ذخیره‌شده
+              </Button>
+            </div>
+          </section>
+        </div>
 
         <div className={styles.layout}>
           <section className={styles.formPanel}>

@@ -23,7 +23,6 @@ import {
   softWhite,
   getSavedPasswords,
 } from "../../utils/utils";
-import { generateName } from "../../utils/generateName";
 import { Chat } from "../Chat/Chat";
 import { TopBar } from "../TopBar/TopBar";
 import { VBrowser } from "../VBrowser/VBrowser";
@@ -43,7 +42,7 @@ import styles from "./App.module.css";
 import config from "../../config";
 import { MetadataContext } from "../../MetadataContext";
 import ChatVideoCard from "../ChatVideoCard/ChatVideoCard";
-import { ActionIcon, Badge, TextInput, Button } from "@mantine/core";
+import { ActionIcon, Badge, Button } from "@mantine/core";
 import {
   IconChevronLeft,
   IconChevronRight,
@@ -52,7 +51,6 @@ import {
   IconList,
   IconMessageCircle,
   IconSettings,
-  IconUser,
   IconVolume,
   IconX,
 } from "@tabler/icons-react";
@@ -182,7 +180,7 @@ export class App extends React.Component<AppProps, AppState> {
     playlist: [],
     tsMap: {},
     nameMap: {},
-    myName: window.localStorage.getItem("watchparty-username") ?? "",
+    myName: "",
     loading: true,
     scrollTimestamp: 0,
     unreadCount: 0,
@@ -253,6 +251,7 @@ export class App extends React.Component<AppProps, AppState> {
   progressUpdater?: number;
   heartbeat: number | undefined = undefined;
   fullscreenControlsTimer: number | undefined;
+  fullscreenControlsTimerGeneration = 0;
   fullscreenMessageTimer: number | undefined;
   fullscreenChatDrag:
     | {
@@ -386,8 +385,7 @@ export class App extends React.Component<AppProps, AppState> {
         successMessage: "",
         warningMessage: "",
       });
-      // Use the name in our state, generate one if empty
-      this.updateName(this.state.myName || (await generateName()));
+      this.updateName(this.context.user?.username || "user");
       // Re-join video chat if we were in it before the reconnection
       if (window.watchparty.ourStream) {
         socket.emit("CMD:joinVideo");
@@ -1804,6 +1802,7 @@ export class App extends React.Component<AppProps, AppState> {
   };
 
   clearFullscreenControlsTimer = () => {
+    this.fullscreenControlsTimerGeneration += 1;
     if (this.fullscreenControlsTimer !== undefined) {
       window.clearTimeout(this.fullscreenControlsTimer);
       this.fullscreenControlsTimer = undefined;
@@ -1815,7 +1814,11 @@ export class App extends React.Component<AppProps, AppState> {
     if (!this.state.fullScreen) {
       return;
     }
+    const generation = this.fullscreenControlsTimerGeneration;
     this.fullscreenControlsTimer = window.setTimeout(() => {
+      if (generation !== this.fullscreenControlsTimerGeneration) {
+        return;
+      }
       this.fullscreenControlsTimer = undefined;
       this.setState({ fullscreenControlsVisible: false });
     }, 5000);
@@ -1825,6 +1828,7 @@ export class App extends React.Component<AppProps, AppState> {
     if (!this.state.fullScreen) {
       return;
     }
+    this.clearFullscreenControlsTimer();
     this.setState(
       { fullscreenControlsVisible: true },
       this.scheduleFullscreenControlsHide,
@@ -2122,7 +2126,6 @@ export class App extends React.Component<AppProps, AppState> {
   updateName = (name: string) => {
     this.setState({ myName: name });
     this.socket.emit("CMD:name", name);
-    window.localStorage.setItem("watchparty-username", name);
   };
 
   getMediaDisplayName = (input?: string) => {
@@ -2735,36 +2738,6 @@ export class App extends React.Component<AppProps, AppState> {
                 }}
                 className={`${styles.fullHeightColumn} ${styles.rightColumn} ${styles.chatColumn}`}
               >
-              <div className={styles.chatTools}>
-                <TextInput
-                  // description="Name"
-                  aria-label="نام شما"
-                  placeholder="نام شما"
-                  style={{
-                    visibility: this.state.showChatColumn
-                      ? undefined
-                      : "hidden",
-                    flexGrow: 1,
-                  }}
-                  value={this.state.myName}
-                  onChange={(e) => {
-                    this.updateName(e.target.value);
-                  }}
-                  onFocus={(e) => e.target.select()}
-                  leftSection={<IconUser />}
-                  rightSectionWidth={70}
-                  rightSection={
-                    <Button
-                      size="compact-xs"
-                      onClick={async () =>
-                        this.updateName(await generateName())
-                      }
-                    >
-                      تصادفی
-                    </Button>
-                  }
-                />
-              </div>
               <div className={styles.roomActions}>
                 <Button
                   color="grey"

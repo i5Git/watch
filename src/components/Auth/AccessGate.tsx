@@ -1,7 +1,7 @@
-import React, { FormEvent, useState } from "react";
+import React, { FormEvent, useContext, useState } from "react";
 import { Alert, Button, PasswordInput, TextInput } from "@mantine/core";
 import { IconArrowLeft, IconLock, IconPlayerPlayFilled } from "@tabler/icons-react";
-import type { ClientUser } from "../../MetadataContext";
+import { MetadataContext, type ClientUser } from "../../MetadataContext";
 import styles from "./AccessGate.module.css";
 
 interface AccessGateProps {
@@ -9,6 +9,7 @@ interface AccessGateProps {
 }
 
 export const AccessGate = ({ onAuthenticated }: AccessGateProps) => {
+  const { siteSettings } = useContext(MetadataContext);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -45,14 +46,14 @@ export const AccessGate = ({ onAuthenticated }: AccessGateProps) => {
           <span className={styles.brandMark}>
             <IconPlayerPlayFilled size={17} />
           </span>
-          <span>Watch</span>
+          <span>{siteSettings.brandName}</span>
         </div>
         <div className={styles.heading}>
           <div className={styles.icon}>
             <IconLock size={20} />
           </div>
           <div>
-            <h1 id="access-title">دسترسی به Watch</h1>
+            <h1 id="access-title">دسترسی به {siteSettings.brandName}</h1>
             <p>برای ادامه، نام کاربری و رمز عبوری را که مدیر ساخته وارد کنید.</p>
           </div>
         </div>

@@ -51,13 +51,19 @@ const toClientUser = (user: any): ClientUser => ({
 });
 
 class WatchParty extends React.Component {
-  public state = DEFAULT_STATE;
+  public state = {
+    ...DEFAULT_STATE,
+    refreshSiteSettings: async () => {
+      await this.loadSiteSettings();
+    },
+  };
 
   async componentDidMount() {
     try {
-      const response = await fetch("/api/auth/session", {
-        credentials: "include",
-      });
+      const [response] = await Promise.all([
+        fetch("/api/auth/session", { credentials: "include" }),
+        this.loadSiteSettings(),
+      ]);
       if (response.ok) {
         this.setState({ user: toClientUser(await response.json()) });
       }
@@ -66,11 +72,27 @@ class WatchParty extends React.Component {
     }
   }
 
+  loadSiteSettings = async () => {
+    const response = await fetch("/api/site-settings", {
+      credentials: "include",
+    });
+    if (!response.ok) {
+      return;
+    }
+    const siteSettings = await response.json();
+    this.setState({ siteSettings });
+    document.title = `${siteSettings.brandName} — با هم تماشا کنید`;
+    document
+      .querySelector('meta[name="apple-mobile-web-app-title"]')
+      ?.setAttribute("content", siteSettings.brandName);
+  };
+
   setAuthenticatedUser = (user: any) => {
     this.setState({ user: toClientUser(user), ready: true });
   };
 
   renderProtectedRoutes() {
+    const { landingEnabled } = this.state.siteSettings;
     return (
       <BrowserRouter>
         <Route
@@ -78,9 +100,9 @@ class WatchParty extends React.Component {
           exact
           render={() => (
             <>
-              <TopBar hideNewRoom />
+              {landingEnabled && <TopBar hideNewRoom />}
               <Home />
-              <Footer />
+              {landingEnabled && <Footer />}
             </>
           )}
         />

@@ -46,6 +46,11 @@
   transform: translateY(-1px);
 }
 
+.volumeSlider {
+  width: 100px;
+  direction: ltr;
+}
+
 .controls :global(.mantine-Progress-root) {
   background: rgba(145, 162, 189, 0.22);
 }
@@ -87,7 +92,7 @@
     font-size: 10px;
   }
 
-  .controls.fullscreen :global(.mantine-Slider-root) {
+  .controls.fullscreen .volumeSlider {
     width: 64px !important;
   }
 
@@ -103,7 +108,7 @@
 
 @media (max-width: 420px) {
   .controls.fullscreen .syncButton,
-  .controls.fullscreen :global(.mantine-Slider-root) {
+  .controls.fullscreen .volumeSlider {
     display: none;
   }
 

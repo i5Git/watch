@@ -334,3 +334,32 @@
     min-height: auto;
   }
 }
+.simpleJoinPage {
+  display: grid;
+  min-height: 100dvh;
+  place-items: center;
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+.simpleJoinCard {
+  display: grid;
+  width: min(100%, 520px);
+  gap: 16px;
+  padding: clamp(24px, 5vw, 42px);
+  box-sizing: border-box;
+  border: 1px solid var(--watch-border);
+  border-radius: 22px;
+  background: rgba(16, 24, 39, 0.88);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.34);
+  text-align: center;
+}
+
+.simpleJoinCard h1,
+.simpleJoinCard p {
+  margin: 0;
+}
+
+.simpleJoinCard p {
+  color: var(--watch-muted);
+}

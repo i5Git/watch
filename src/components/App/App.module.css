@@ -379,25 +379,6 @@
   direction: rtl;
 }
 
-.chatTools {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px;
-  border-bottom: 1px solid var(--watch-border);
-  background: rgba(16, 24, 42, 0.78);
-}
-
-.chatTools :global(.mantine-TextInput-root) {
-  min-width: 0;
-  flex: 1 1 auto;
-}
-
-.chatTools :global(.mantine-Input-input) {
-  min-height: 40px;
-  border-radius: 10px;
-}
-
 .roomActions {
   display: grid;
   grid-template-columns: 1fr 1fr;

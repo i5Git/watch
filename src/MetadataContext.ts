@@ -17,6 +17,11 @@ export interface MetadataState {
   ready: boolean;
   streamPath: string | undefined;
   beta: boolean;
+  siteSettings: {
+    brandName: string;
+    landingEnabled: boolean;
+  };
+  refreshSiteSettings: () => Promise<void>;
 }
 
 export const DEFAULT_STATE: MetadataState = {
@@ -24,6 +29,11 @@ export const DEFAULT_STATE: MetadataState = {
   ready: false,
   streamPath: undefined,
   beta: false,
+  siteSettings: {
+    brandName: "Watch",
+    landingEnabled: true,
+  },
+  refreshSiteSettings: async () => {},
 };
 
 export const MetadataContext = React.createContext<MetadataState>(DEFAULT_STATE);
