@@ -8,6 +8,7 @@ UI_PORT="4173"
 SERVER_PORT="8080"
 
 log() { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
+warn() { printf '\n\033[1;33mWarning: %s\033[0m\n' "$*"; }
 fail() { printf '\n\033[1;31mError: %s\033[0m\n' "$*" >&2; exit 1; }
 
 [[ ${EUID:-$(id -u)} -eq 0 ]] || fail "Run this installer as root: sudo bash install.sh"
@@ -63,7 +64,6 @@ if [[ ! -f .env ]]; then
   fi
 fi
 
-# Ensure the backend binds publicly and uses the chosen port.
 cat >> .env <<EOF
 
 # Added by install.sh
@@ -73,7 +73,11 @@ NODE_ENV=production
 EOF
 
 log "Installing Node.js packages"
-npm ci
+rm -rf node_modules
+if ! npm ci --include=dev; then
+  warn "package-lock.json is out of sync; falling back to npm install"
+  npm install --include=dev
+fi
 
 log "Building the web interface"
 VITE_SERVER_HOST="${SCHEME}://${PUBLIC_HOST}:${SERVER_PORT}" npm run build
@@ -133,7 +137,7 @@ Useful commands:
   pm2 status
   pm2 logs
   pm2 restart watchparty-server watchparty-ui
-  cd ${INSTALL_DIR} && git pull && npm ci && VITE_SERVER_HOST=${SCHEME}://${PUBLIC_HOST}:${SERVER_PORT} npm run build && pm2 restart all
+  cd ${INSTALL_DIR} && git pull && rm -rf node_modules && npm install --include=dev && VITE_SERVER_HOST=${SCHEME}://${PUBLIC_HOST}:${SERVER_PORT} npm run build && pm2 restart all
 
 Important: choosing HTTPS here does not create a TLS certificate. Put the app behind Caddy/Nginx or Cloudflare before using an https:// address.
 EOF
