@@ -210,11 +210,32 @@ update_or_clone_source() {
   if [[ -f "${INSTALL_DIR}/package.json" ]]; then
     if [[ "${UPDATE_ONLY}" == "1" && -d "${INSTALL_DIR}/.git" ]]; then
       log "Updating the existing Watch checkout."
+      local current_remote current_branch
       if [[ -w "${INSTALL_DIR}/.git/FETCH_HEAD" || "${EUID}" -eq 0 ]]; then
-        git -C "${INSTALL_DIR}" pull --ff-only
+        current_remote="$(git -C "${INSTALL_DIR}" remote get-url origin 2>/dev/null || true)"
+        current_branch="$(git -C "${INSTALL_DIR}" branch --show-current 2>/dev/null || true)"
+        if [[ "${current_remote}" != "${REPO_URL}" || "${current_branch}" != "main" ]]; then
+          log "Switching the existing checkout to ${REPO_URL} main."
+          git -C "${INSTALL_DIR}" remote set-url origin "${REPO_URL}"
+          git -C "${INSTALL_DIR}" fetch origin main
+          git -C "${INSTALL_DIR}" checkout -B main origin/main
+        else
+          git -C "${INSTALL_DIR}" pull --ff-only
+        fi
       else
-        run_privileged git -C "${INSTALL_DIR}" pull --ff-only
+        current_remote="$(run_privileged git -C "${INSTALL_DIR}" remote get-url origin 2>/dev/null || true)"
+        current_branch="$(run_privileged git -C "${INSTALL_DIR}" branch --show-current 2>/dev/null || true)"
+        if [[ "${current_remote}" != "${REPO_URL}" || "${current_branch}" != "main" ]]; then
+          log "Switching the existing checkout to ${REPO_URL} main."
+          run_privileged git -C "${INSTALL_DIR}" remote set-url origin "${REPO_URL}"
+          run_privileged git -C "${INSTALL_DIR}" fetch origin main
+          run_privileged git -C "${INSTALL_DIR}" checkout -B main origin/main
+        else
+          run_privileged git -C "${INSTALL_DIR}" pull --ff-only
+        fi
       fi
+    elif [[ "${UPDATE_ONLY}" != "1" ]]; then
+      log "Existing checkout found at ${INSTALL_DIR}; use --update to fetch the latest Watch version."
     fi
     return
   fi

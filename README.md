@@ -55,6 +55,11 @@ chmod +x scripts/install-ubuntu.sh
 
 The updater pulls the `main` branch and rebuilds the Compose service without overwriting an existing `.env`.
 
+If you previously installed the older checkout under `/opt/watchparty`, update that exact installation with:
+
+    curl -fsSL https://raw.githubusercontent.com/i5Git/watch/main/scripts/install-ubuntu.sh | \
+      bash -s -- --update --yes --dir /opt/watchparty --repo https://github.com/i5Git/watch.git
+
 ## Manual Docker deployment
 
 ```bash
