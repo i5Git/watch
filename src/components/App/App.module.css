@@ -17,13 +17,16 @@
 
 .fullscreenLayout {
   position: fixed;
-  inset: 0;
+  top: var(--watch-viewport-top, 0);
+  right: auto;
+  bottom: auto;
+  left: var(--watch-viewport-left, 0);
   z-index: 900;
-  width: 100%;
+  width: var(--watch-viewport-width, 100dvw);
   min-width: 0;
   max-width: none;
-  height: 100dvh;
-  min-height: 100svh;
+  height: var(--watch-viewport-height, 100dvh);
+  min-height: 0;
   margin: 0;
   padding: 0;
   box-sizing: border-box;
@@ -120,10 +123,13 @@
 }
 
 .fullscreenLayout .playerStage {
+  width: 100%;
+  height: 100%;
   min-height: 0;
 }
 
 .fullscreenLayout .playerContainer {
+  width: 100%;
   height: 100%;
   min-height: 0;
   max-height: none;
@@ -138,6 +144,8 @@
   height: 100% !important;
   max-height: none !important;
   object-fit: contain;
+  object-position: center center;
+  margin: auto;
 }
 
 .fullscreenLayout .chatColumn,
@@ -265,6 +273,14 @@
   color: var(--watch-text);
   font-size: 14px;
   font-weight: 800;
+  touch-action: none;
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.fullscreenChatTitle:active {
+  cursor: grabbing;
 }
 
 .fullscreenChatMeta {
@@ -614,8 +630,9 @@
 
 @media (orientation: landscape) and (pointer: coarse) {
   .fullscreenLayout {
-    min-height: 100svh;
-    height: 100dvh;
+    width: var(--watch-viewport-width, 100dvw);
+    height: var(--watch-viewport-height, 100svh);
+    min-height: 0;
   }
 
   .fullscreenChatPanel {

@@ -118,6 +118,7 @@ interface AppState {
   fullscreenChatMessage: ChatMessage | null;
   fullscreenChatUnread: boolean;
   fullscreenChatButtonOffset: { x: number; y: number };
+  fullscreenChatPanelOffset: { x: number; y: number };
   controlsTimestamp: number;
   watchOptions: SearchResult[];
   isVBrowser: boolean;
@@ -191,6 +192,7 @@ export class App extends React.Component<AppProps, AppState> {
     fullscreenChatMessage: null,
     fullscreenChatUnread: false,
     fullscreenChatButtonOffset: { x: 0, y: 0 },
+    fullscreenChatPanelOffset: { x: 0, y: 0 },
     controlsTimestamp: 0,
     watchOptions: [],
     isVBrowser: false,
@@ -266,6 +268,19 @@ export class App extends React.Component<AppProps, AppState> {
         moved: boolean;
       }
     | undefined;
+  fullscreenChatPanelDrag:
+    | {
+        pointerId: number;
+        startX: number;
+        startY: number;
+        originX: number;
+        originY: number;
+        minX: number;
+        maxX: number;
+        minY: number;
+        maxY: number;
+      }
+    | undefined;
   YouTubeInterface: YouTube = new YouTube(null);
   HTMLInterface: HTML = new HTML("leftVideo");
   Player = () => {
@@ -281,6 +296,11 @@ export class App extends React.Component<AppProps, AppState> {
   async componentDidMount() {
     document.addEventListener("fullscreenchange", this.onFullScreenChange);
     document.addEventListener("keydown", this.onKeydown);
+    window.addEventListener("resize", this.syncVisualViewport);
+    window.addEventListener("orientationchange", this.syncVisualViewport);
+    window.visualViewport?.addEventListener("resize", this.syncVisualViewport);
+    window.visualViewport?.addEventListener("scroll", this.syncVisualViewport);
+    this.syncVisualViewport();
 
     // Send heartbeat to the server
     this.heartbeat = window.setInterval(
@@ -300,6 +320,16 @@ export class App extends React.Component<AppProps, AppState> {
   componentWillUnmount() {
     document.removeEventListener("fullscreenchange", this.onFullScreenChange);
     document.removeEventListener("keydown", this.onKeydown);
+    window.removeEventListener("resize", this.syncVisualViewport);
+    window.removeEventListener("orientationchange", this.syncVisualViewport);
+    window.visualViewport?.removeEventListener(
+      "resize",
+      this.syncVisualViewport,
+    );
+    window.visualViewport?.removeEventListener(
+      "scroll",
+      this.syncVisualViewport,
+    );
     this.clearFullscreenControlsTimer();
     this.clearFullscreenMessageTimer();
     document.documentElement.classList.remove("watch-fullscreen");
@@ -1823,6 +1853,19 @@ export class App extends React.Component<AppProps, AppState> {
     }
   };
 
+  syncVisualViewport = () => {
+    const viewport = window.visualViewport;
+    const width = viewport?.width ?? window.innerWidth;
+    const height = viewport?.height ?? window.innerHeight;
+    const left = viewport?.offsetLeft ?? 0;
+    const top = viewport?.offsetTop ?? 0;
+    const root = document.documentElement;
+    root.style.setProperty("--watch-viewport-width", `${width}px`);
+    root.style.setProperty("--watch-viewport-height", `${height}px`);
+    root.style.setProperty("--watch-viewport-left", `${left}px`);
+    root.style.setProperty("--watch-viewport-top", `${top}px`);
+  };
+
   toggleFullscreenChat = () => {
     this.setState(
       (state) => ({
@@ -1897,6 +1940,59 @@ export class App extends React.Component<AppProps, AppState> {
     }
   };
 
+  handleChatPanelPointerDown = (
+    event: React.PointerEvent<HTMLDivElement>,
+  ) => {
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const panel = event.currentTarget.closest(
+      `.${styles.fullscreenChatPanel}`,
+    ) as HTMLElement | null;
+    if (!panel) {
+      return;
+    }
+    const rect = panel.getBoundingClientRect();
+    const originX = this.state.fullscreenChatPanelOffset.x;
+    const originY = this.state.fullscreenChatPanelOffset.y;
+    this.fullscreenChatPanelDrag = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originX,
+      originY,
+      minX: originX + 8 - rect.left,
+      maxX: originX + window.innerWidth - 8 - rect.right,
+      minY: originY + 8 - rect.top,
+      maxY: originY + window.innerHeight - 8 - rect.bottom,
+    };
+  };
+
+  handleChatPanelPointerMove = (
+    event: React.PointerEvent<HTMLDivElement>,
+  ) => {
+    const drag = this.fullscreenChatPanelDrag;
+    if (!drag || drag.pointerId !== event.pointerId) {
+      return;
+    }
+    const deltaX = event.clientX - drag.startX;
+    const deltaY = event.clientY - drag.startY;
+    this.setState({
+      fullscreenChatPanelOffset: {
+        x: Math.min(drag.maxX, Math.max(drag.minX, drag.originX + deltaX)),
+        y: Math.min(drag.maxY, Math.max(drag.minY, drag.originY + deltaY)),
+      },
+    });
+  };
+
+  handleChatPanelPointerUp = (
+    event: React.PointerEvent<HTMLDivElement>,
+  ) => {
+    if (this.fullscreenChatPanelDrag?.pointerId === event.pointerId) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+      this.fullscreenChatPanelDrag = undefined;
+    }
+  };
+
   onFullScreenChange = () => {
     const fullScreen = Boolean(document.fullscreenElement);
     this.setState(
@@ -1906,6 +2002,7 @@ export class App extends React.Component<AppProps, AppState> {
         fullscreenControlsVisible: fullScreen,
         fullscreenChatMessage: null,
         fullscreenChatUnread: false,
+        fullscreenChatPanelOffset: { x: 0, y: 0 },
       },
       () => {
         this.syncFullscreenBodyClass(fullScreen);
@@ -1952,6 +2049,7 @@ export class App extends React.Component<AppProps, AppState> {
         fullscreenControlsVisible: fullScreen,
         fullscreenChatMessage: null,
         fullscreenChatUnread: false,
+        fullscreenChatPanelOffset: { x: 0, y: 0 },
       },
       () => {
         this.syncFullscreenBodyClass(fullScreen);
@@ -2533,7 +2631,8 @@ export class App extends React.Component<AppProps, AppState> {
                     {this.state.fullScreen && this.state.roomMedia && (
                       <div
                         className={styles.fullscreenTapSurface}
-                        onPointerDown={this.handleVideoInteraction}
+                        onClick={this.handleVideoInteraction}
+                        onTouchEnd={this.handleVideoInteraction}
                         aria-hidden="true"
                       />
                     )}
@@ -2698,9 +2797,22 @@ export class App extends React.Component<AppProps, AppState> {
                 role="dialog"
                 aria-label={t("conversation")}
               >
-                <div className={styles.fullscreenChatPanel}>
+                <div
+                  className={styles.fullscreenChatPanel}
+                  style={{
+                    transform: `translate3d(${this.state.fullscreenChatPanelOffset.x}px, ${this.state.fullscreenChatPanelOffset.y}px, 0)`,
+                  }}
+                >
                   <div className={styles.fullscreenChatHeader}>
-                    <div className={styles.fullscreenChatTitle}>
+                    <div
+                      className={styles.fullscreenChatTitle}
+                      onPointerDown={this.handleChatPanelPointerDown}
+                      onPointerMove={this.handleChatPanelPointerMove}
+                      onPointerUp={this.handleChatPanelPointerUp}
+                      onPointerCancel={() => {
+                        this.fullscreenChatPanelDrag = undefined;
+                      }}
+                    >
                       <IconMessageCircle size={18} />
                       <span>{t("conversation")}</span>
                       <span className={styles.fullscreenChatMeta}>
