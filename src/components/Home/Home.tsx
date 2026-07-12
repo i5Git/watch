@@ -1,4 +1,4 @@
-import React, { FormEvent, useContext, useState } from "react";
+import React, { FormEvent, useState } from "react";
 import { Button, TextInput } from "@mantine/core";
 import {
   IconArrowLeft,
@@ -8,7 +8,6 @@ import {
   IconPlayerPlayFilled,
   IconRefresh,
 } from "@tabler/icons-react";
-import { MetadataContext } from "../../MetadataContext";
 import { createRoom } from "../TopBar/TopBar";
 import { t } from "../../i18n";
 import styles from "./Home.module.css";
@@ -56,7 +55,6 @@ const steps = [
 ];
 
 export const Home = () => {
-  const { user } = useContext(MetadataContext);
   const [source, setSource] = useState("");
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState("");
@@ -66,7 +64,7 @@ export const Home = () => {
     setError("");
     setIsCreating(true);
     try {
-      await createRoom(user, false, source.trim());
+      await createRoom(false, source.trim());
     } catch (createError) {
       console.error(createError);
       setError("ساخت اتاق انجام نشد. دوباره تلاش کنید.");

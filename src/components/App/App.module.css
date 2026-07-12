@@ -19,18 +19,17 @@
   position: fixed;
   inset: 0;
   z-index: 900;
-  width: 100%;
+  width: 100vw;
+  min-width: 100vw;
   max-width: none;
   height: 100dvh;
   min-height: 100dvh;
   margin: 0;
-  padding: max(8px, env(safe-area-inset-top))
-    max(8px, env(safe-area-inset-right))
-    max(8px, env(safe-area-inset-bottom))
-    max(8px, env(safe-area-inset-left));
+  padding: 0;
   box-sizing: border-box;
   overflow: hidden;
   background: #050912;
+  overscroll-behavior: none;
 }
 
 .fullscreenLayout:fullscreen {
@@ -55,6 +54,7 @@
 .fullscreenLayout .playerContainer {
   height: 100%;
   min-height: 0;
+  max-height: none;
   border: 0;
   border-radius: 0;
   box-shadow: none;
@@ -65,6 +65,7 @@
   width: 100% !important;
   height: 100% !important;
   max-height: none !important;
+  object-fit: contain;
 }
 
 .fullscreenLayout .chatColumn,
@@ -77,7 +78,9 @@
   inset-inline: 0;
   bottom: 0;
   z-index: 25;
-  padding-bottom: max(4px, env(safe-area-inset-bottom));
+  padding: 0 max(4px, env(safe-area-inset-right))
+    max(4px, env(safe-area-inset-bottom))
+    max(4px, env(safe-area-inset-left));
   pointer-events: auto;
 }
 
@@ -88,23 +91,17 @@
   overflow: hidden;
   pointer-events: none;
   direction: rtl;
-  background:
-    linear-gradient(
-      180deg,
-      rgba(5, 9, 18, 0.02) 20%,
-      rgba(5, 9, 18, 0.16) 58%,
-      rgba(5, 9, 18, 0.66) 100%
-    );
+  background: transparent;
 }
 
 .fullscreenChatPanel {
   position: absolute;
   right: max(12px, env(safe-area-inset-right));
-  left: auto;
-  inset-block-end: calc(70px + max(10px, env(safe-area-inset-bottom)));
+  left: max(12px, env(safe-area-inset-left));
+  inset-block-end: calc(72px + max(10px, env(safe-area-inset-bottom)));
   display: flex;
-  width: min(420px, calc(100% - 24px));
-  height: min(52vh, 520px);
+  width: auto;
+  height: min(44dvh, 390px);
   max-height: calc(100% - 118px);
   flex-direction: column;
   overflow: hidden;
@@ -178,6 +175,7 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+  position: relative;
   height: 100%;
 }
 
@@ -223,7 +221,7 @@
 
 .chatColumn {
   flex: 0 0 390px;
-  height: calc(100vh - 122px);
+  height: calc(100dvh - 122px);
   min-width: 0;
   box-sizing: border-box;
   overflow: hidden;
@@ -282,7 +280,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: min(68vh, 720px);
+  min-height: min(64dvh, 720px);
   overflow: hidden;
   border: 1px solid var(--watch-border);
   border-radius: 18px;
@@ -296,6 +294,22 @@
 .playerContainer iframe {
   object-fit: contain;
   background: #050912;
+}
+
+.playerContainer > :global(.mantine-Overlay-root) {
+  pointer-events: none;
+}
+
+.playerContainer > :global(.mantine-Overlay-root) button {
+  pointer-events: auto;
+}
+
+.videoElement {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
 }
 
 .flexCenter {
@@ -319,7 +333,7 @@
 
 .expandButton {
   position: absolute;
-  inset-inline-end: -26px;
+  inset-inline-start: -26px;
   top: 50%;
   z-index: 3;
   display: flex;
@@ -364,9 +378,10 @@
   }
 
   .chatColumn {
-    height: auto;
+    height: min(390px, 44dvh);
     flex-basis: auto;
-    min-height: 500px;
+    min-height: 0;
+    max-height: 390px;
   }
 
   .fullHeightColumn,
@@ -375,22 +390,12 @@
     height: auto;
   }
 
-  .fullscreenLayout {
-    width: 100%;
-    max-width: none;
-    margin: 0;
-    padding: max(4px, env(safe-area-inset-top))
-      max(4px, env(safe-area-inset-right))
-      max(4px, env(safe-area-inset-bottom))
-      max(4px, env(safe-area-inset-left));
-  }
-
   .fullscreenChatPanel {
     right: max(8px, env(safe-area-inset-right));
     left: max(8px, env(safe-area-inset-left));
     inset-block-end: calc(66px + max(8px, env(safe-area-inset-bottom)));
     width: auto;
-    height: min(42vh, 380px);
+    height: min(36dvh, 300px);
     max-height: calc(100% - 112px);
     border-radius: 18px;
   }
@@ -432,11 +437,32 @@
   }
 
   .chatColumn {
-    min-height: 440px;
+    height: min(390px, 46dvh);
+    min-height: 0;
+    max-height: 390px;
     border-radius: 16px;
   }
 
   .fullscreenControls {
     padding-inline: 4px;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 600px) {
+  .fullscreenChatPanel {
+    right: auto;
+    left: 50%;
+    width: min(720px, calc(100% - 24px));
+    height: min(54dvh, 260px);
+    transform: translateX(-50%);
+  }
+
+  .fullscreenChatHeader {
+    min-height: 42px;
+    padding-block: 5px;
+  }
+
+  .fullscreenChatPanel .fullscreenChatInner {
+    min-height: 0;
   }
 }

@@ -1,6 +1,6 @@
 import type MediasoupClient from "mediasoup-client";
 import React from "react";
-import { Alert, Loader, Menu, Overlay, Select, Title } from "@mantine/core";
+import { Alert, Loader, Menu, Overlay, Title } from "@mantine/core";
 import io, { Socket } from "socket.io-client";
 import {
   formatSpeed,
@@ -20,8 +20,6 @@ import {
   isFileShare,
   isVBrowser,
   isDash,
-  VIDEO_MAX_HEIGHT_CSS,
-  createUuid,
   softWhite,
   getSavedPasswords,
 } from "../../utils/utils";
@@ -29,19 +27,15 @@ import { generateName } from "../../utils/generateName";
 import { Chat } from "../Chat/Chat";
 import { TopBar } from "../TopBar/TopBar";
 import { VBrowser } from "../VBrowser/VBrowser";
-import { VideoChat } from "../VideoChat/VideoChat";
 import { getCurrentSettings } from "../Settings/LocalSettings";
 import { MultiStreamModal } from "../Modal/MultiStreamModal";
 import { ComboBox } from "../ComboBox/ComboBox";
 import { SearchComponent } from "../SearchComponent/SearchComponent";
 import { Controls } from "../Controls/Controls";
-import { VBrowserModal } from "../Modal/VBrowserModal";
 import { SettingsModal } from "../Settings/SettingsModal";
 import { ErrorModal } from "../Modal/ErrorModal";
 import { PasswordModal } from "../Modal/PasswordModal";
-import { ScreenShareModal } from "../Modal/ScreenShareModal";
-import { FileShareModal } from "../Modal/FileShareModal";
-import firebase from "firebase/compat/app";
+import { FileShareModal, type UploadedMedia } from "../Modal/FileShareModal";
 import { SubtitleModal } from "../Modal/SubtitleModal";
 import { HTML } from "./HTML";
 import { YouTube } from "./YouTube";
@@ -51,19 +45,13 @@ import { MetadataContext } from "../../MetadataContext";
 import ChatVideoCard from "../ChatVideoCard/ChatVideoCard";
 import { ActionIcon, Badge, TextInput, Button } from "@mantine/core";
 import {
-  IconAntennaBars5,
-  IconBrowser,
   IconChevronLeft,
   IconChevronRight,
   IconFile,
-  IconKeyboardFilled,
   IconList,
   IconMessageCircle,
-  IconScreenShare,
   IconSettings,
   IconUser,
-  IconUserScreen,
-  IconUsersGroup,
   IconVolume,
   IconX,
 } from "@tabler/icons-react";
@@ -95,6 +83,10 @@ window.watchparty = {
 };
 
 const clientId = getOrCreateClientId();
+const isCompactViewport = () =>
+  isMobile() ||
+  (typeof window !== "undefined" &&
+    window.matchMedia("(max-width: 900px)").matches);
 
 interface AppProps {
   vanity?: string;
@@ -113,9 +105,7 @@ interface AppState {
   playlist: PlaylistVideo[];
   tsMap: NumberDict;
   nameMap: StringDict;
-  pictureMap: StringDict;
   myName: string;
-  myPicture: string;
   loading: boolean;
   scrollTimestamp: number;
   unreadCount: number;
@@ -143,9 +133,6 @@ interface AppState {
   isVBrowserLarge: boolean;
   nonPlayableMedia: boolean;
   currentTab: string;
-  isSubscribeModalOpen: boolean;
-  isVBrowserModalOpen: boolean;
-  isScreenShareModalOpen: boolean;
   isFileShareModalOpen: boolean;
   isSubtitleModalOpen: boolean;
   isMultiSelectModalOpen: boolean;
@@ -158,7 +145,6 @@ interface AppState {
   warningMessage: string;
   isChatDisabled: boolean;
   showChatColumn: boolean;
-  showPeopleColumn: boolean;
   owner: string | undefined;
   vanity: string | undefined;
   password: string | undefined;
@@ -188,9 +174,7 @@ export class App extends React.Component<AppProps, AppState> {
     playlist: [],
     tsMap: {},
     nameMap: {},
-    pictureMap: {},
     myName: window.localStorage.getItem("watchparty-username") ?? "",
-    myPicture: "",
     loading: true,
     scrollTimestamp: 0,
     unreadCount: 0,
@@ -214,9 +198,6 @@ export class App extends React.Component<AppProps, AppState> {
     nonPlayableMedia: false,
     currentTab:
       new URLSearchParams(window.location.search).get("tab") ?? "chat",
-    isSubscribeModalOpen: false,
-    isVBrowserModalOpen: false,
-    isScreenShareModalOpen: false,
     isFileShareModalOpen: false,
     isSubtitleModalOpen: false,
     isMultiSelectModalOpen: false,
@@ -228,19 +209,13 @@ export class App extends React.Component<AppProps, AppState> {
     successMessage: "",
     warningMessage: "",
     isChatDisabled: false,
-    showChatColumn: isMobile()
-      ? true
+    showChatColumn: isCompactViewport()
+      ? false
       : Boolean(
           Number(
             window.localStorage.getItem("watchparty-showchatcolumn") ?? "1",
           ),
         ),
-    showPeopleColumn: false,
-    // Boolean(
-    //       Number(
-    //         window.localStorage.getItem('watchparty-showpeoplecolumn') ?? '0',
-    //       ),
-    //     ),
     owner: undefined,
     vanity: undefined,
     password: undefined,
@@ -293,13 +268,6 @@ export class App extends React.Component<AppProps, AppState> {
     this.loadSettings();
     this.loadYouTube();
     this.init();
-    if (config.VITE_FIREBASE_CONFIG) {
-      firebase.auth().onAuthStateChanged(async (user: firebase.User | null) => {
-        if (user) {
-          this.loadSignInData(user);
-        }
-      });
-    }
   }
 
   componentWillUnmount() {
@@ -338,6 +306,7 @@ export class App extends React.Component<AppProps, AppState> {
     const shard = Number(await response.text()) || "";
     const socket = io(serverPath + roomId, {
       transports: ["websocket"],
+      withCredentials: true,
       query: {
         clientId,
         password,
@@ -359,7 +328,6 @@ export class App extends React.Component<AppProps, AppState> {
       });
       // Use the name in our state, generate one if empty
       this.updateName(this.state.myName || (await generateName()));
-      this.loadSignInData(this.context.user);
       // Re-join video chat if we were in it before the reconnection
       if (window.watchparty.ourStream) {
         socket.emit("CMD:joinVideo");
@@ -795,9 +763,6 @@ export class App extends React.Component<AppProps, AppState> {
     socket.on("REC:nameMap", (data: StringDict) => {
       this.setState({ nameMap: data });
     });
-    socket.on("REC:pictureMap", (data: StringDict) => {
-      this.setState({ pictureMap: data });
-    });
     socket.on("REC:lock", (data: string) => {
       this.setState({ roomLock: data });
     });
@@ -892,28 +857,6 @@ export class App extends React.Component<AppProps, AppState> {
     // Load settings from localstorage
     let settings = getCurrentSettings();
     this.setState({ settings });
-  };
-
-  loadSignInData = async (user: firebase.User | undefined) => {
-    if (user && this.socket) {
-      // NOTE: firebase auth doesn't provide the actual first name data that individual providers (G/FB) do
-      // It's accessible at the time the user logs in but not afterward
-      // If we want accurate surname/given name we'll need to save that somewhere
-      const firstName = user.displayName?.split(" ")[0];
-      if (firstName) {
-        // Don't update the username if the user wants to customize their own
-        // Set a flag in localstorage so we only update this once, if the user changes name manually later we won't overwrite
-        // Clear the flag on logout
-        if (!window.localStorage.getItem("watchparty-loginname")) {
-          this.updateName(firstName);
-          window.localStorage.setItem(
-            "watchparty-loginname",
-            Date.now().toString(),
-          );
-        }
-      }
-      this.updateUid(user);
-    }
   };
 
   loadYouTube = () => {
@@ -1035,78 +978,72 @@ export class App extends React.Component<AppProps, AppState> {
     this.socket.emit("CMD:deleteChatMessages", {});
   };
 
-  startConvert = async (sourceUrl?: string) => {
-    let stream = new ReadableStream();
-    let file: File;
-    if (!sourceUrl) {
-      const files = await openFileSelector();
-      if (!files) {
-        return;
-      }
-      file = files[0];
-      // Start uploading stream
-      stream = file.stream();
-    }
-    const uuid = createUuid();
-    const convertPath = this.context.convertPath;
-    // const convertPath = 'https://azure.howardchung.net:5001';
-    let convertUrl = convertPath + "/" + uuid + ".m3u8";
-    convertUrl += sourceUrl ? "?url=" + encodeURIComponent(sourceUrl) : "";
-    // Wait for the playlist to get generated
-    const poll = async () => {
-      let ok = false;
-      let i = 0;
-      while (!ok && i < 30) {
-        await new Promise((resolve) => setTimeout(resolve, 2000));
-        const resp = await fetch(convertUrl);
-        ok = resp.ok;
-        i += 1;
-      }
-      // Same URL but GET
-      this.roomSetMedia(convertUrl);
-    };
-    poll();
-    const reader = stream.getReader();
-    const start = Date.now();
-    let bytes = 0;
-    const ws = new WebSocket(convertUrl.replace("http", "ws"));
-    ws.onmessage = async (_ev) => {
-      // Server sends a message whenever it wants next chunk
-      const { done, value } = await reader.read();
-      if (value) {
-        ws.send(value);
-      }
-      if (done) {
-        ws.close();
-      }
-      const end = Date.now();
-      bytes += value?.length ?? 0;
-      this.setState({
-        downloaded: bytes,
-        total: file?.size,
-        speed: done ? 0 : bytes / ((end - start) / 1000),
-        connections: 1,
-      });
-    };
-    ws.onclose = () => {
-      this.setState({ uploadController: undefined });
-    };
-    const controller = new AbortController();
-    controller.signal.onabort = (_ev) => {
-      ws.close();
-    };
+  startConvert = async (_sourceUrl?: string) => {
     this.setState({
-      uploadController: controller,
+      errorMessage: "برای تبدیل، فایل را از گزینه «آپلود ویدیو» روی VPS ارسال کنید.",
     });
-    // Note: If using fetch we can't read the response until the request completes
-    // await fetch(convertUrl, {
-    //   method: 'POST',
-    //   body: stream,
-    //   signal: this.state.uploadController?.signal,
-    //   //@ts-expect-error
-    //   duplex: 'half',
-    // });
   };
+
+  uploadMedia = (
+    file: File,
+    convertToMp4: boolean,
+    onProgress: (progress: number) => void,
+  ): Promise<UploadedMedia> =>
+    new Promise((resolve, reject) => {
+      const request = new XMLHttpRequest();
+      request.open("POST", "/api/media/upload");
+      request.withCredentials = true;
+      request.setRequestHeader("Content-Type", "application/octet-stream");
+      request.setRequestHeader("X-File-Name", encodeURIComponent(file.name));
+      request.setRequestHeader("X-Convert-Mp4", String(convertToMp4));
+      request.upload.onprogress = (event) => {
+        if (event.lengthComputable) {
+          onProgress(Math.round((event.loaded / event.total) * 100));
+        }
+      };
+      request.onerror = () => reject(new Error("ارتباط با سرور قطع شد."));
+      request.onabort = () => reject(new Error("آپلود لغو شد."));
+      request.onload = async () => {
+        let data: UploadedMedia & { error?: string };
+        try {
+          data = JSON.parse(request.responseText);
+        } catch {
+          reject(new Error("پاسخ نامعتبر از سرور دریافت شد."));
+          return;
+        }
+        if (request.status < 200 || request.status >= 300) {
+          reject(new Error(data.error || "آپلود انجام نشد."));
+          return;
+        }
+        try {
+          let latest = data;
+          onProgress(100);
+          if (latest.status === "converting") {
+            for (let attempt = 0; attempt < 600; attempt += 1) {
+              await new Promise((resolveWait) => setTimeout(resolveWait, 1500));
+              const response = await fetch(`/api/media/${latest.id}`, {
+                credentials: "include",
+              });
+              latest = await response.json();
+              if (latest.status === "ready") {
+                break;
+              }
+              if (latest.status === "error") {
+                throw new Error(latest.error || "تبدیل ویدیو انجام نشد.");
+              }
+            }
+          }
+          if (latest.status !== "ready") {
+            throw new Error("تبدیل ویدیو بیشتر از زمان مجاز طول کشید.");
+          }
+          this.roomSetMedia(latest.url);
+          resolve(latest);
+        } catch (error) {
+          reject(error);
+        }
+      };
+      request.send(file);
+    });
 
   startFileShare = async (useMediaSoup: boolean) => {
     const files = await openFileSelector();
@@ -1839,7 +1776,7 @@ export class App extends React.Component<AppProps, AppState> {
   localFullScreen = async (bVideoOnly: boolean) => {
     // iPhone Safari does not expose a DOM overlay while using native video
     // fullscreen, so use a fixed room surface on small screens instead.
-    if (isMobile()) {
+    if (isCompactViewport()) {
       const fullScreen = !this.state.fullScreen;
       this.setState(
         {
@@ -1926,12 +1863,6 @@ export class App extends React.Component<AppProps, AppState> {
     this.setState({ myName: name });
     this.socket.emit("CMD:name", name);
     window.localStorage.setItem("watchparty-username", name);
-  };
-
-  updateUid = async (user: firebase.User) => {
-    const uid = user.uid;
-    const token = await user.getIdToken();
-    this.socket.emit("CMD:uid", { uid, token });
   };
 
   getMediaDisplayName = (input?: string) => {
@@ -2026,7 +1957,6 @@ export class App extends React.Component<AppProps, AppState> {
   };
 
   render() {
-    const sharer = this.state.participants.find((p) => p.isScreenShare);
     const playlist = this.state.playlist;
     const controls = (
       <Controls
@@ -2078,23 +2008,10 @@ export class App extends React.Component<AppProps, AppState> {
             startConvert={this.startConvert}
           />
         )}
-        {this.state.isVBrowserModalOpen && (
-          <VBrowserModal
-            closeModal={() => this.setState({ isVBrowserModalOpen: false })}
-            startVBrowser={this.startVBrowser}
-          />
-        )}
-        {this.state.isScreenShareModalOpen && (
-          <ScreenShareModal
-            closeModal={() => this.setState({ isScreenShareModalOpen: false })}
-            startScreenShare={this.startScreenShare}
-          />
-        )}
         {this.state.isFileShareModalOpen && (
           <FileShareModal
             closeModal={() => this.setState({ isFileShareModalOpen: false })}
-            startFileShare={this.startFileShare}
-            startConvert={this.startConvert}
+            uploadMedia={this.uploadMedia}
           />
         )}
         {this.state.isSubtitleModalOpen && (
@@ -2233,146 +2150,33 @@ export class App extends React.Component<AppProps, AppState> {
                           {t("stopShare")}
                         </Button>
                       )}
-                      {!this.localStreamToPublish &&
-                        !sharer &&
-                        !this.playingVBrowser() && (
-                          <Button
-                            className={styles.shareButton}
-                            color="blue"
-                            disabled={!this.haveLock()}
-                            onClick={() => {
-                              this.setState({
-                                isScreenShareModalOpen: true,
-                              });
-                            }}
-                            leftSection={<IconScreenShare />}
-                          >
-                            {t("shareScreen")}
-                          </Button>
-                        )}
-                      {!this.localStreamToPublish &&
-                        !sharer &&
-                        !this.playingVBrowser() && (
-                          <Button
-                            className={styles.shareButton}
-                            disabled={!this.haveLock()}
-                            color="green"
-                            onClick={() => {
-                              this.setState({
-                                isVBrowserModalOpen: true,
-                              });
-                            }}
-                            leftSection={<IconBrowser />}
-                          >
-                            {t("virtualBrowser")}
-                          </Button>
-                        )}
-                      {this.playingVBrowser() && (
-                        <>
-                          <Button
-                            color="red"
-                            disabled={!this.haveLock()}
-                            onClick={this.stopVBrowser}
-                            leftSection={<IconX />}
-                          >
-                            {t("stopShare")} مرورگر مجازی
-                          </Button>
-                          <Select
-                            leftSection={<IconKeyboardFilled />}
-                            value={this.state.controller}
-                            placeholder="بدون کنترل‌کننده"
-                            clearable
-                            onChange={this.changeController}
-                            disabled={!this.haveLock()}
-                            data={this.state.participants.map((p) => ({
-                              label: this.state.nameMap[p.id] || p.id,
-                              value: p.id,
-                            }))}
-                          ></Select>
-                          <Select
-                            leftSection={<IconUserScreen />}
-                            disabled={!this.haveLock()}
-                            value={this.state.vBrowserResolution}
-                            onChange={(value) =>
-                              this.setState({
-                                vBrowserResolution: value!,
-                              })
-                            }
-                            data={[
-                              {
-                                label: "1080p (Plus only)",
-                                value: "1920x1080@30",
-                                disabled: !this.state.isVBrowserLarge,
-                              },
-                              {
-                                label: "720p",
-                                value: "1280x720@30",
-                              },
-                              {
-                                label: "576p",
-                                value: "1024x576@60",
-                              },
-                              {
-                                label: "486p",
-                                value: "864x486@60",
-                              },
-                              {
-                                label: "360p",
-                                value: "640x360@60",
-                              },
-                            ]}
-                          ></Select>
-                          <Select
-                            leftSection={<IconAntennaBars5 />}
-                            disabled={!this.haveLock()}
-                            value={this.state.vBrowserQuality}
-                            onChange={(value) => {
-                              this.setState({
-                                vBrowserQuality: value!,
-                              });
-                            }}
-                            data={[
-                              {
-                                label: "Eco (0.25x)",
-                                value: "0.25",
-                              },
-                              {
-                                label: "Low (0.5x)",
-                                value: "0.5",
-                              },
-                              {
-                                label: "Standard (1x)",
-                                value: "1",
-                              },
-                              {
-                                label: "High (1.5x)",
-                                value: "1.5",
-                              },
-                              {
-                                label: "Ultra (2x)",
-                                value: "2",
-                              },
-                            ]}
-                          ></Select>
-                        </>
+                      {!this.localStreamToPublish && (
+                        <Button
+                          className={styles.shareButton}
+                          disabled={!this.haveLock()}
+                          onClick={() => {
+                            this.setState({ isFileShareModalOpen: true });
+                          }}
+                          leftSection={<IconFile />}
+                        >
+                          آپلود ویدیو
+                        </Button>
                       )}
-                      {!this.localStreamToPublish &&
-                        !sharer &&
-                        !this.playingVBrowser() && (
-                          <Button
-                            className={styles.shareButton}
-                            color="violet"
-                            disabled={!this.haveLock()}
-                            onClick={() => {
-                              this.setState({
-                                isFileShareModalOpen: true,
-                              });
-                            }}
-                            leftSection={<IconFile />}
-                          >
-                            {t("shareFile")}
-                          </Button>
-                        )}
+                      {isCompactViewport() && (
+                        <Button
+                          className={styles.shareButton}
+                          onClick={() => {
+                            this.setState((state) => ({
+                              showChatColumn: !state.showChatColumn,
+                            }));
+                          }}
+                          leftSection={<IconMessageCircle size={17} />}
+                        >
+                          {this.state.showChatColumn
+                            ? t("closeChat")
+                            : t("conversation")}
+                        </Button>
+                      )}
                       {this.state.uploadController && (
                         <Button
                           color="red"
@@ -2422,7 +2226,7 @@ export class App extends React.Component<AppProps, AppState> {
                             overflowY:
                               playlist.length > 0 ? "scroll" : undefined,
                             maxHeight: 400,
-                            maxWidth: isMobile() ? 400 : 600,
+                            maxWidth: isCompactViewport() ? 400 : 600,
                           }}
                         >
                           {playlist.length === 0 && (
@@ -2553,18 +2357,17 @@ export class App extends React.Component<AppProps, AppState> {
                         setQuality={(data: string) => {
                           this.setState({ vBrowserQuality: data });
                         }}
-                        isMobile={isMobile()}
+                        isMobile={isCompactViewport()}
                       />
                     ) : (
                       <video
+                        className={styles.videoElement}
                         style={{
                           display:
                             (this.usingNative() && !this.state.loading) ||
                             this.state.fullScreen
                               ? "block"
                               : "none",
-                          width: "100%",
-                          maxHeight: VIDEO_MAX_HEIGHT_CSS,
                         }}
                         id="leftVideo"
                         onEnded={(e) => this.onVideoEnded(e.currentTarget.src)}
@@ -2604,7 +2407,7 @@ export class App extends React.Component<AppProps, AppState> {
                   ) : (
                     controls
                   ))}
-                {!isMobile() && (
+                {!isCompactViewport() && (
                   <div className={styles.expandButton}>
                     <ActionIcon
                       onClick={() => {
@@ -2631,9 +2434,17 @@ export class App extends React.Component<AppProps, AppState> {
             {!this.state.fullScreen && (
               <div
                 style={{
-                  display: "flex",
+                  display:
+                    this.state.showChatColumn || !isCompactViewport()
+                      ? "flex"
+                      : "none",
                   flexDirection: "column",
                   position: "relative",
+                  flex: isCompactViewport()
+                    ? "0 0 auto"
+                    : this.state.showChatColumn
+                      ? "0 0 390px"
+                      : "0 0 0px",
                   width: this.state.showChatColumn ? 400 : 0,
                   maxWidth: 400,
                   overflow: "hidden",
@@ -2674,21 +2485,6 @@ export class App extends React.Component<AppProps, AppState> {
               <div className={styles.roomActions}>
                 <Button
                   color="grey"
-                  onClick={() =>
-                    this.setState({
-                      showPeopleColumn: !this.state.showPeopleColumn,
-                    })
-                  }
-                  fullWidth
-                  leftSection={<IconUsersGroup />}
-                  rightSection={
-                    <Badge circle>{this.state.participants.length}</Badge>
-                  }
-                >
-                  {t("people")}
-                </Button>
-                <Button
-                  color="grey"
                   title="Settings"
                   fullWidth
                   onClick={() => {
@@ -2699,39 +2495,9 @@ export class App extends React.Component<AppProps, AppState> {
                   {t("settings")}
                 </Button>
               </div>
-              {this.state.state === "connected" && (
-                <div
-                  style={{
-                    position: "absolute",
-                    background: "rgba(10, 10, 10, 0.6)",
-                    zIndex: 200,
-                    left: 0,
-                    top: 76,
-                    height: this.state.showPeopleColumn
-                      ? "calc(100% - 120px)"
-                      : "0%",
-                    width: "100%",
-                    overflowY: "auto",
-                    // visibility: this.state.showPeopleColumn ? 'visible' : 'hidden',
-                    transition: "height ease-out 0.5s",
-                  }}
-                >
-                  <VideoChat
-                    socket={this.socket}
-                    participants={this.state.participants}
-                    nameMap={this.state.nameMap}
-                    pictureMap={this.state.pictureMap}
-                    tsMap={this.state.tsMap}
-                    rosterUpdateTS={this.state.rosterUpdateTS}
-                    owner={this.state.owner}
-                    getLeaderTime={this.getLeaderTime}
-                  />
-                </div>
-              )}
                 <Chat
                   chat={this.state.chat}
                   nameMap={this.state.nameMap}
-                  pictureMap={this.state.pictureMap}
                   socket={this.socket}
                   scrollTimestamp={this.state.scrollTimestamp}
                   getMediaDisplayName={this.getMediaDisplayName}
@@ -2770,7 +2536,6 @@ export class App extends React.Component<AppProps, AppState> {
                   <Chat
                     chat={this.state.chat}
                     nameMap={this.state.nameMap}
-                    pictureMap={this.state.pictureMap}
                     socket={this.socket}
                     scrollTimestamp={this.state.scrollTimestamp}
                     getMediaDisplayName={this.getMediaDisplayName}

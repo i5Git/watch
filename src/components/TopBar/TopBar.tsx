@@ -1,53 +1,37 @@
 import React, { useCallback, useContext } from "react";
-import {
-  ActionIcon,
-  Button,
-  Menu,
-  Text,
-} from "@mantine/core";
-import firebase from "firebase/compat/app";
-import "firebase/compat/auth";
-import { LoginModal } from "../Modal/LoginModal";
-import { SubscribeButton } from "../SubscribeButton/SubscribeButton";
-import { InviteButton } from "../InviteButton/InviteButton";
-import { MetadataContext } from "../../MetadataContext";
-import { serverPath } from "../../utils/utils";
+import { Button, Menu } from "@mantine/core";
 import {
   IconCirclePlusFilled,
-  IconDatabase,
-  IconLogin,
   IconLogout,
   IconPlayerPlayFilled,
-  IconTrash,
+  IconShieldLock,
   IconUser,
 } from "@tabler/icons-react";
+import { InviteButton } from "../InviteButton/InviteButton";
+import { MetadataContext } from "../../MetadataContext";
 import { t } from "../../i18n";
 import styles from "./TopBar.module.css";
 
 export async function createRoom(
-  user: firebase.User | undefined,
   openNewTab: boolean | undefined,
   video: string = "",
 ) {
-  const uid = user?.uid;
-  const token = await user?.getIdToken();
-  const response = await fetch(serverPath + "/createRoom", {
+  const response = await fetch("/createRoom", {
     method: "POST",
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      uid,
-      token,
-      video,
-    }),
+    body: JSON.stringify({ video }),
   });
-  const data = await response.json();
-  const { name } = data;
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data?.name) {
+    throw new Error(data?.error || "ساخت اتاق انجام نشد.");
+  }
   if (openNewTab) {
-    window.open("/watch" + name);
+    window.open("/watch" + data.name, "_blank", "noopener,noreferrer");
   } else {
-    window.location.assign("/watch" + name);
+    window.location.assign("/watch" + data.name);
   }
 }
 
@@ -55,10 +39,9 @@ export const NewRoomButton = (props: {
   size?: string;
   openNewTab?: boolean;
 }) => {
-  const context = useContext(MetadataContext);
   const onClick = useCallback(async () => {
-    await createRoom(context.user, props.openNewTab);
-  }, [context.user, props.openNewTab]);
+    await createRoom(props.openNewTab);
+  }, [props.openNewTab]);
 
   return (
     <Button
@@ -72,182 +55,78 @@ export const NewRoomButton = (props: {
   );
 };
 
-export class SignInButton extends React.Component {
-  static contextType = MetadataContext;
-  declare context: React.ContextType<typeof MetadataContext>;
-  public state = { isLoginOpen: false };
-
-  onSignOut = () => {
-    firebase.auth().signOut();
-    window.localStorage.removeItem("watchparty-loginname");
-    window.location.reload();
-  };
-
-  render() {
-    if (this.context.user) {
-      return (
-        <Menu position="bottom-end" withinPortal>
-          <Menu.Target>
-            <button className={styles.accountButton} type="button">
-              <IconUser size={18} />
-              <span>{t("account")}</span>
-            </button>
-          </Menu.Target>
-          <Menu.Dropdown dir="rtl">
-            <Menu.Label>{this.context.user.email || t("account")}</Menu.Label>
-            <Menu.Item
-              leftSection={<IconLogout size={16} />}
-              onClick={this.onSignOut}
-            >
-              {t("signOut")}
-            </Menu.Item>
-          </Menu.Dropdown>
-        </Menu>
-      );
-    }
-
-    return (
-      <>
-        {this.state.isLoginOpen && (
-          <LoginModal
-            closeModal={() => this.setState({ isLoginOpen: false })}
-          />
-        )}
-        <Button
-          variant="subtle"
-          className={styles.signInButton}
-          leftSection={<IconLogin size={18} />}
-          onClick={() => this.setState({ isLoginOpen: true })}
-        >
-          {t("signIn")}
-        </Button>
-      </>
-    );
-  }
-}
-
-export class ListRoomsButton extends React.Component {
-  static contextType = MetadataContext;
-  declare context: React.ContextType<typeof MetadataContext>;
-  public state = { rooms: [] as PersistentRoom[] };
-
-  componentDidMount() {
-    this.refreshRooms();
+export const AccountMenu = () => {
+  const { user } = useContext(MetadataContext);
+  if (!user) {
+    return null;
   }
 
-  refreshRooms = async () => {
-    if (this.context.user) {
-      const token = await this.context.user.getIdToken();
-      const response = await fetch(
-        serverPath +
-          `/listRooms?uid=${this.context.user.uid}&token=${token}`,
-      );
-      if (response.ok) {
-        this.setState({ rooms: await response.json() });
-      }
-    }
+  const signOut = async () => {
+    await fetch("/api/auth/logout", {
+      method: "POST",
+      credentials: "include",
+    });
+    window.location.assign("/");
   };
 
-  deleteRoom = async (roomId: string) => {
-    if (this.context.user) {
-      const token = await this.context.user.getIdToken();
-      await fetch(
-        serverPath +
-          `/deleteRoom?uid=${this.context.user.uid}&token=${token}&roomId=${roomId}`,
-        { method: "DELETE" },
-      );
-      this.setState({
-        rooms: this.state.rooms.filter((room) => room.roomId !== roomId),
-      });
-      this.refreshRooms();
-    }
-  };
-
-  render() {
-    return (
-      <Menu position="bottom-end" withinPortal>
-        <Menu.Target>
-          <Button
-            variant="subtle"
-            className={styles.secondaryButton}
-            onClick={this.refreshRooms}
-            leftSection={<IconDatabase size={18} />}
+  return (
+    <Menu position="bottom-end" withinPortal>
+      <Menu.Target>
+        <button className={styles.accountButton} type="button">
+          <IconUser size={18} />
+          <span>{user.username}</span>
+        </button>
+      </Menu.Target>
+      <Menu.Dropdown dir="rtl">
+        <Menu.Label>{user.role === "admin" ? "مدیر" : "کاربر"}</Menu.Label>
+        {user.role === "admin" && (
+          <Menu.Item
+            component="a"
+            href="/admin"
+            leftSection={<IconShieldLock size={16} />}
           >
-            {t("myRooms")}
-          </Button>
-        </Menu.Target>
-        <Menu.Dropdown dir="rtl">
-          {this.state.rooms.length === 0 && (
-            <Menu.Item disabled>{t("noPermanentRooms")}</Menu.Item>
-          )}
-          {this.state.rooms.map((room: PersistentRoom) => (
-            <Menu.Item
-              key={room.roomId}
-              component="a"
-              href={
-                room.vanity ? "/r/" + room.vanity : "/watch" + room.roomId
-              }
-            >
-              <div className={styles.roomMenuItem}>
-                <div>
-                  <Text size="sm">
-                    {room.vanity
-                      ? `/r/${room.vanity}`
-                      : `/watch${room.roomId}`}
-                  </Text>
-                  <Text size="xs" c="dimmed">
-                    {room.roomId}
-                  </Text>
-                </div>
-                <ActionIcon
-                  aria-label="حذف اتاق"
-                  color="red"
-                  variant="subtle"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    event.preventDefault();
-                    this.deleteRoom(room.roomId);
-                  }}
-                >
-                  <IconTrash size={16} />
-                </ActionIcon>
-              </div>
-            </Menu.Item>
-          ))}
-        </Menu.Dropdown>
-      </Menu>
-    );
-  }
-}
+            مدیریت کاربران
+          </Menu.Item>
+        )}
+        <Menu.Item
+          leftSection={<IconLogout size={16} />}
+          onClick={signOut}
+        >
+          خروج
+        </Menu.Item>
+      </Menu.Dropdown>
+    </Menu>
+  );
+};
+
+// Kept as a compatibility export for older integrations. The product no
+// longer renders a public sign-in button.
+export const SignInButton = AccountMenu;
 
 export const TopBar = (props: {
   hideNewRoom?: boolean;
   hideSignin?: boolean;
-  hideMyRooms?: boolean;
   roomTitle?: string;
   roomDescription?: string;
   roomTitleColor?: string;
 }) => {
-  const context = useContext(MetadataContext);
   const isRoom = Boolean(props.roomTitle || props.roomDescription);
 
   return (
     <header className={styles.topBar} dir="rtl">
       <div className={styles.brandCluster}>
-        <a href="/" className={styles.brand} aria-label={t("brand")}>
+        <a href="/" className={styles.brand} aria-label="Watch">
           <span className={styles.brandMark}>
             <IconPlayerPlayFilled size={16} />
           </span>
-          <span>{t("brand")}</span>
+          <span>Watch</span>
         </a>
         {isRoom ? (
           <div className={styles.roomIdentity}>
             <strong style={{ color: props.roomTitleColor || undefined }}>
               {props.roomTitle || t("room")}
             </strong>
-            {props.roomDescription && (
-              <span>{props.roomDescription}</span>
-            )}
+            {props.roomDescription && <span>{props.roomDescription}</span>}
           </div>
         ) : (
           <nav className={styles.homeNav} aria-label="ناوبری اصلی">
@@ -266,9 +145,7 @@ export const TopBar = (props: {
           </div>
         )}
         {!props.hideNewRoom && <NewRoomButton openNewTab />}
-        {!props.hideMyRooms && context.user && <ListRoomsButton />}
-        <SubscribeButton />
-        {!props.hideSignin && <SignInButton />}
+        {!props.hideSignin && <AccountMenu />}
         {isRoom && <InviteButton />}
       </div>
     </header>

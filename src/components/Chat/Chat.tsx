@@ -41,7 +41,6 @@ const truncateReply = (input?: string, max = 30) =>
 interface ChatProps {
   chat: ChatMessage[];
   nameMap: StringDict;
-  pictureMap: StringDict;
   socket: Socket;
   scrollTimestamp: number;
   className?: string;
@@ -265,7 +264,6 @@ export class Chat extends React.Component<ChatProps> {
                     : ""
                 }
                 message={msg}
-                pictureMap={this.props.pictureMap}
                 nameMap={this.props.nameMap}
                 formatMessage={this.formatMessage}
                 owner={this.props.owner}
@@ -405,7 +403,6 @@ export class Chat extends React.Component<ChatProps> {
 const ChatMessage = ({
   message,
   nameMap,
-  pictureMap,
   formatMessage,
   socket,
   owner,
@@ -417,7 +414,6 @@ const ChatMessage = ({
 }: {
   message: ChatMessage;
   nameMap: StringDict;
-  pictureMap: StringDict;
   formatMessage: (cmd: string, msg?: string) => React.ReactNode;
   socket: Socket;
   owner: string | undefined;
@@ -434,7 +430,7 @@ const ChatMessage = ({
   className: string;
 }) => {
   const { user } = useContext(MetadataContext);
-  const { id, timestamp, cmd, msg, system, isSub, reactions, videoTS } =
+  const { id, timestamp, cmd, msg, system, reactions, videoTS } =
     message;
   const spellFull = 5; // the number of people whose names should be written out in full in the reaction popup
   const imageMsg = renderImageString(msg);
@@ -458,8 +454,7 @@ const ChatMessage = ({
             trigger={
               <div
                 style={{ cursor: "pointer", fontWeight: 800 }}
-                title={isSub ? "WatchParty Plus subscriber" : ""}
-                className={`${isSub ? styles.subscriber : styles.light} ${styles.hoverEffect}`}
+                className={`${styles.light} ${styles.hoverEffect}`}
               >
                 {Boolean(system) && "System"}
                 {nameMap[id] || id}

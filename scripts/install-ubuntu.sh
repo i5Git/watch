@@ -32,7 +32,7 @@ Install Watch on Ubuntu/Debian with Docker Compose:
 Options:
   --yes                 Accept defaults without prompting.
   --update              Pull the existing checkout and rebuild it.
-  --advanced            Prompt for optional Firebase, Stripe, TURN, database, and Redis values.
+  --advanced            Prompt for optional TURN, YouTube, database, and Redis values.
   --mode docker|native  Deployment mode. Docker is the default.
   --dir PATH            Installation directory. Default: /opt/watch.
   --port PORT           Public host port. Default: 8080.
@@ -69,14 +69,14 @@ ASSUME_YES="0"
 ADVANCED="0"
 
 VITE_SERVER_HOST=""
-VITE_FIREBASE_CONFIG=""
-VITE_STRIPE_PUBLIC_KEY=""
 VITE_OAUTH_REDIRECT_HOSTNAME=""
 VITE_TURN_SERVERS=""
 VITE_TURN_USERNAME=""
 VITE_TURN_CREDENTIAL=""
+ADMIN_USERNAME="${WATCH_ADMIN_USERNAME:-admin}"
+ADMIN_PASSWORD="${WATCH_ADMIN_PASSWORD:-}"
+GENERATED_ADMIN_PASSWORD="0"
 YOUTUBE_API_KEY=""
-FIREBASE_ADMIN_SDK_CONFIG=""
 DATABASE_URL=""
 REDIS_URL=""
 
@@ -176,19 +176,18 @@ if [[ "${ASSUME_YES}" != "1" ]]; then
   prompt_default "Public port" "${APP_PORT}" APP_PORT
   prompt_default "Public hostname or IP" "${PUBLIC_HOST}" PUBLIC_HOST
   prompt_default "Deployment mode (docker/native)" "${DEPLOY_MODE}" DEPLOY_MODE
+  prompt_default "Admin username" "${ADMIN_USERNAME}" ADMIN_USERNAME
+  prompt_secret "Admin password (leave blank to generate one)" ADMIN_PASSWORD
 
   if [[ "${ADVANCED}" == "1" ]]; then
     prompt_default "API origin (blank for same origin)" "${VITE_SERVER_HOST}" VITE_SERVER_HOST
     prompt_default "OAuth redirect origin" \
       "${VITE_OAUTH_REDIRECT_HOSTNAME:-http://${PUBLIC_HOST}:${APP_PORT}}" \
       VITE_OAUTH_REDIRECT_HOSTNAME
-    prompt_secret "Firebase web config JSON" VITE_FIREBASE_CONFIG
-    prompt_secret "Stripe public key" VITE_STRIPE_PUBLIC_KEY
     prompt_default "TURN server URLs" "${VITE_TURN_SERVERS}" VITE_TURN_SERVERS
     prompt_secret "TURN username" VITE_TURN_USERNAME
     prompt_secret "TURN credential" VITE_TURN_CREDENTIAL
     prompt_secret "YouTube API key" YOUTUBE_API_KEY
-    prompt_secret "Firebase Admin SDK JSON" FIREBASE_ADMIN_SDK_CONFIG
     prompt_secret "Postgres connection URL" DATABASE_URL
     prompt_secret "Redis connection URL" REDIS_URL
   fi
@@ -256,13 +255,14 @@ write_env() {
     printf 'NODE_ENV=production\n'
     write_env_value "VITE_SERVER_HOST" "${VITE_SERVER_HOST}"
     write_env_value "VITE_OAUTH_REDIRECT_HOSTNAME" "${redirect_origin}"
-    write_env_value "VITE_FIREBASE_CONFIG" "${VITE_FIREBASE_CONFIG}"
-    write_env_value "VITE_STRIPE_PUBLIC_KEY" "${VITE_STRIPE_PUBLIC_KEY}"
     write_env_value "VITE_TURN_SERVERS" "${VITE_TURN_SERVERS}"
     write_env_value "VITE_TURN_USERNAME" "${VITE_TURN_USERNAME}"
     write_env_value "VITE_TURN_CREDENTIAL" "${VITE_TURN_CREDENTIAL}"
+    write_env_value "ADMIN_USERNAME" "${ADMIN_USERNAME}"
+    write_env_value "ADMIN_PASSWORD" "${ADMIN_PASSWORD}"
+    write_env_value "AUTH_DATA_DIR" "data"
+    write_env_value "MEDIA_DATA_DIR" "data/media"
     write_env_value "YOUTUBE_API_KEY" "${YOUTUBE_API_KEY}"
-    write_env_value "FIREBASE_ADMIN_SDK_CONFIG" "${FIREBASE_ADMIN_SDK_CONFIG}"
     write_env_value "DATABASE_URL" "${DATABASE_URL}"
     write_env_value "REDIS_URL" "${REDIS_URL}"
   } > "${INSTALL_DIR}/.env"
@@ -273,7 +273,7 @@ install_packages() {
   log "Installing required Ubuntu packages."
   export DEBIAN_FRONTEND=noninteractive
   run_privileged apt-get update
-  run_privileged apt-get install -y ca-certificates curl git
+  run_privileged apt-get install -y ca-certificates curl git openssl ffmpeg
 }
 
 has_docker_compose() {
@@ -369,6 +369,10 @@ command -v apt-get >/dev/null 2>&1 ||
   fail "This installer targets Ubuntu/Debian systems."
 
 install_packages
+if [[ -z "${ADMIN_PASSWORD}" ]]; then
+  ADMIN_PASSWORD="$(openssl rand -hex 20)"
+  GENERATED_ADMIN_PASSWORD="1"
+fi
 prepare_directory
 update_or_clone_source
 write_env
@@ -381,6 +385,12 @@ fi
 
 log "Installation complete."
 printf 'URL: http://%s:%s\n' "${PUBLIC_HOST}" "${APP_PORT}"
+printf 'Admin username: %s\n' "${ADMIN_USERNAME}"
+if [[ "${GENERATED_ADMIN_PASSWORD}" == "1" ]]; then
+  printf 'Generated admin password: %s\n' "${ADMIN_PASSWORD}"
+else
+  printf 'Admin password: the value configured during installation (stored in %s/.env)\n' "${INSTALL_DIR}"
+fi
 if [[ "${DEPLOY_MODE}" == "docker" ]]; then
   printf 'Status: cd %s && docker compose ps\n' "${INSTALL_DIR}"
   printf 'Logs:   cd %s && docker compose logs -f --tail=100\n' "${INSTALL_DIR}"

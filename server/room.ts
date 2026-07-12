@@ -1,9 +1,8 @@
 import config from "./config.ts";
 import axios from "axios";
 import { Server, Socket } from "socket.io";
-import { getUser, validateUserToken } from "./utils/firebase.ts";
+import { getUserFromCookie } from "./auth.ts";
 import { redis, redisCount, redisCountDistinct } from "./utils/redis.ts";
-import { getIsSubscriberByEmail } from "./utils/stripe.ts";
 import { type AssignedVM } from "./vm/base.ts";
 import { getStartOfDay } from "./utils/time.ts";
 import { postgres, updateObject, upsertObject } from "./utils/postgres.ts";
@@ -35,7 +34,6 @@ declare module "socket.io" {
   interface Socket {
     clientId: string;
     uid: string;
-    isSub: boolean;
   }
 }
 
@@ -49,10 +47,9 @@ export class Room {
   public loop = false;
   private chat: ChatMessage[] = [];
   private nameMap: StringDict = {};
-  private pictureMap: StringDict = {};
   public vBrowser: AssignedVM | undefined = undefined;
-  public creator: string | undefined = undefined; // email of the user who created the room (just used for stats)
-  public lock: string | undefined = undefined; // uid of the user who locked the room
+  public creator: string | undefined = undefined; // username of the user who created the room
+  public lock: string | undefined = undefined; // username of the user who locked the room
   public playlist: PlaylistVideo[] = [];
 
   // Non-serialized state
@@ -109,7 +106,7 @@ export class Room {
     io.of(roomId).use(async (socket, next) => {
       if (postgres) {
         const result = await postgres.query(
-          `SELECT password, owner, "isSubRoom" FROM room where "roomId" = $1`,
+          `SELECT password, owner FROM room where "roomId" = $1`,
           [this.roomId],
         );
         const password = socket.handshake.query?.password;
@@ -120,18 +117,14 @@ export class Room {
           return;
         }
         // Check if room is at capacity
-        const isSubRoom = result.rows[0]?.isSubRoom;
-        const roomCapacity = isSubRoom
-          ? config.ROOM_CAPACITY_SUB
-          : config.ROOM_CAPACITY;
+        const roomCapacity = config.ROOM_CAPACITY;
         if (roomCapacity && this.roster.length >= roomCapacity) {
           next(new Error("This room is full"));
           return;
         }
       }
-      // clientId is meant for things that shouldn't require login
-      // Anything sensitive (e.g. subscriber features, room lock) should be validated with uid and require login
-      // vbrowser controller, identify chat messages, video chat/screenshare signaling
+      // clientId identifies this browser instance for ephemeral room state.
+      // Site authentication is validated by the global Socket.IO middleware.
       // Used as keys for ephemeral room state (e.g. name, picture, timestamp)
 
       // redis-based clientId spoof protection (session)
@@ -163,6 +156,14 @@ export class Room {
         next(new Error("Invalid clientId format"));
         return;
       }
+      const appUser =
+        socket.data.appUser ||
+        getUserFromCookie(socket.handshake.headers.cookie);
+      if (!appUser) {
+        next(new Error("authentication required"));
+        return;
+      }
+      socket.data.appUser = appUser;
       // If Redis isn't enabled we'll just allow
       if (redis) {
         const key = "session:" + clientId;
@@ -208,7 +209,6 @@ export class Room {
 
       socket.emit("REC:host", this.getHostState());
       socket.emit("REC:nameMap", this.nameMap);
-      socket.emit("REC:pictureMap", this.pictureMap);
       socket.emit("REC:tsMap", this.tsMap);
       socket.emit("REC:lock", this.lock);
       socket.emit("chatinit", this.chat);
@@ -217,8 +217,7 @@ export class Room {
       io.of(roomId).emit("roster", this.getRosterForApp());
 
       socket.clientId = clientId;
-      socket.uid = "";
-      socket.isSub = false;
+      socket.uid = socket.data.appUser.username;
 
       // Check if this socket matches this.lock UID
       const validateLock = () => {
@@ -238,25 +237,6 @@ export class Room {
       socket.on("CMD:name", (data: unknown) =>
         this.changeUserName(socket, String(data)),
       );
-      socket.on("CMD:picture", (data: unknown) =>
-        this.changeUserPicture(socket, String(data)),
-      );
-      socket.on("CMD:uid", async (raw: unknown) => {
-        let data = raw as { uid: string; token: string };
-        // Called when the user logs in, sets the socket's auth state
-        if (!data || !data.uid || !data.token) {
-          return;
-        }
-        const decoded = await validateUserToken(data.uid, data.token);
-        if (decoded?.uid) {
-          // This socket is now confirmed to be this UID
-          socket.uid = decoded?.uid;
-        }
-        const isSubscriber = await getIsSubscriberByEmail(decoded?.email);
-        if (isSubscriber) {
-          socket.isSub = true;
-        }
-      });
       socket.on("CMD:host", (data: unknown) => {
         validateLock() && this.startHosting(socket, String(data));
       });
@@ -357,19 +337,12 @@ export class Room {
   }
 
   public serialize = () => {
-    // Get the set of IDs with messages in chat
-    // Only serialize roster and picture ID for those people, to save space
+    // Get the set of IDs with messages in chat so the room stays compact.
     const chatIDs = new Set(this.chat.map((msg) => msg.id));
     const abbrNameMap: StringDict = {};
     Object.keys(this.nameMap).forEach((id) => {
       if (chatIDs.has(id)) {
         abbrNameMap[id] = this.nameMap[id];
-      }
-    });
-    const abbrPictureMap: StringDict = {};
-    Object.keys(this.pictureMap).forEach((id) => {
-      if (chatIDs.has(id)) {
-        abbrPictureMap[id] = this.pictureMap[id];
       }
     });
     return JSON.stringify({
@@ -380,7 +353,6 @@ export class Room {
       paused: this.paused,
       chat: this.chat,
       nameMap: abbrNameMap,
-      pictureMap: abbrPictureMap,
       vBrowser: this.vBrowser,
       lock: this.lock,
       creator: this.creator,
@@ -404,9 +376,6 @@ export class Room {
     }
     if (roomObj.nameMap) {
       this.nameMap = roomObj.nameMap;
-    }
-    if (roomObj.pictureMap) {
-      this.pictureMap = roomObj.pictureMap;
     }
     if (roomObj.vBrowser) {
       this.vBrowser = roomObj.vBrowser;
@@ -570,9 +539,6 @@ export class Room {
       timestamp: new Date().toISOString(),
       videoTS: socket?.clientId ? this.tsMap[socket.clientId] : undefined,
     };
-    if (socket?.isSub) {
-      chatWithTime.isSub = true;
-    }
     this.chat.push(chatWithTime);
     this.chat = this.chat.splice(-100);
     this.io.of(this.roomId).emit("REC:chat", chatWithTime);
@@ -589,14 +555,6 @@ export class Room {
     this.io.of(this.roomId).emit("REC:nameMap", this.nameMap);
   };
 
-  private changeUserPicture = (socket: Socket, data: string) => {
-    if (data && data.length > 10000) {
-      return;
-    }
-    this.pictureMap[socket.clientId] = data;
-    this.io.of(this.roomId).emit("REC:pictureMap", this.pictureMap);
-  };
-
   private startHosting = async (socket: Socket, data: string) => {
     if (this.vBrowser) {
       socket.emit(
@@ -608,9 +566,6 @@ export class Room {
     redisCount("urlStarts");
     if (config.STREAM_PATH && data?.startsWith(config.STREAM_PATH)) {
       redisCount("streamStarts");
-    }
-    if (config.CONVERT_PATH && data?.startsWith(config.CONVERT_PATH)) {
-      redisCount("convertStarts");
     }
     // If a reddit URL, extract video URL
     if (
@@ -1013,70 +968,11 @@ export class Room {
       socket.emit("errorMessage", "Invalid vBrowser input");
       return;
     }
-    const { clientId, uid, isSub } = socket;
-    // these checks are skipped if firebase not provided
-    if (config.FIREBASE_ADMIN_SDK_CONFIG) {
-      const user = await getUser(uid);
-      // Validate verified email if not a third-party auth provider
-      if (
-        user?.providerData[0].providerId === "password" &&
-        !user?.emailVerified
-      ) {
-        socket.emit(
-          "errorMessage",
-          "A verified email is required to start a VBrowser.",
-        );
-        return;
-      }
-
-      // Log the vbrowser creation by uid and clientid
-      if (redis) {
-        const expireTime = getStartOfDay() / 1000 + 86400;
-        if (clientId) {
-          const clientCount = await redis.zincrby(
-            "vBrowserClientIDs",
-            1,
-            clientId,
-          );
-          redis.expireat("vBrowserClientIDs", expireTime);
-          const clientMinutes = await redis.zincrby(
-            "vBrowserClientIDMinutes",
-            1,
-            clientId,
-          );
-          redis.expireat("vBrowserClientIDMinutes", expireTime);
-        }
-        if (uid) {
-          const uidCount = await redis.zincrby("vBrowserUIDs", 1, uid);
-          redis.expireat("vBrowserUIDs", expireTime);
-          const uidMinutes = await redis.zincrby("vBrowserUIDMinutes", 1, uid);
-          redis.expireat("vBrowserUIDMinutes", expireTime);
-          // TODO limit users based on client or uid usage
-        }
-      }
-      // check if the user already has a VM already in postgres
-      if (postgres) {
-        const { rows } = await postgres.query(
-          "SELECT count(1) from vbrowser WHERE uid = $1",
-          [uid],
-        );
-        if (rows[0].count >= 2) {
-          socket.emit(
-            "errorMessage",
-            "There is already an active vBrowser for this user.",
-          );
-          return;
-        }
-      }
-    }
-    let isLarge = false;
+    const { clientId, uid } = socket;
+    const isLarge = data.options?.size === "large";
     let region = "";
-    // Check if user is subscriber or firebase not configured, if so allow sub options
-    if (isSub || !config.FIREBASE_ADMIN_SDK_CONFIG) {
-      isLarge = data.options?.size === "large";
-      if (data.options?.region) {
-        region = data.options?.region;
-      }
+    if (data.options?.region) {
+      region = data.options?.region;
     }
 
     redisCount("vBrowserStarts");
@@ -1196,7 +1092,7 @@ export class Room {
       socket.emit("errorMessage", "Database is not available");
       return;
     }
-    const { uid, isSub } = socket;
+    const { uid } = socket;
     if (data.undo) {
       await updateObject(
         postgres,
@@ -1206,7 +1102,6 @@ export class Room {
           owner: null,
           vanity: null,
           isChatDisabled: null,
-          isSubRoom: null,
           roomTitle: null,
           roomDescription: null,
           roomTitleColor: null,
@@ -1216,27 +1111,9 @@ export class Room {
       );
       socket.emit("REC:getRoomState", {});
     } else {
-      // validate room count
-      const roomCount = (
-        await postgres.query(
-          'SELECT count(1) from room where owner = $1 AND "roomId" != $2',
-          [uid, this.roomId],
-        )
-      ).rows[0].count;
-      const limit = isSub
-        ? config.SUBSCRIBER_ROOM_LIMIT
-        : config.FREE_ROOM_LIMIT;
-      if (roomCount >= limit) {
-        socket.emit(
-          "errorMessage",
-          `You've exceeded the permanent room limit. Subscribe for additional permanent rooms.`,
-        );
-        return;
-      }
       const roomObj = {
         roomId: this.roomId,
         owner: uid,
-        isSubRoom: isSub,
       };
       let result: QueryResult | null = null;
       result = await upsertObject(postgres, "room", roomObj, {
@@ -1337,15 +1214,11 @@ export class Room {
       isChatDisabled: isChatDisabled,
       mediaPath: mediaPath,
     };
-    const { isSub, uid } = socket;
-    if (isSub) {
-      // user must be sub to set certain properties
-      // If empty vanity, reset to null
-      roomObj.vanity = vanity ?? null;
-      roomObj.roomTitle = roomTitle;
-      roomObj.roomDescription = roomDescription;
-      roomObj.roomTitleColor = roomTitleColor;
-    }
+    const { uid } = socket;
+    roomObj.vanity = vanity ?? null;
+    roomObj.roomTitle = roomTitle;
+    roomObj.roomDescription = roomDescription;
+    roomObj.roomTitleColor = roomTitleColor;
     try {
       const query = `UPDATE room
         SET ${Object.keys(roomObj).map((k, i) => `"${k}" = $${i + 1}`)}

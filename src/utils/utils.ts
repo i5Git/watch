@@ -80,9 +80,6 @@ export function getColorForStringHex(id: string) {
   return colorMappings[getColorForString(id)];
 }
 
-export const getFbPhoto = (fbId: string) =>
-  `https://graph.facebook.com/${fbId}/picture?type=normal`;
-
 export const isYouTube = (input: string) => {
   return (
     input.startsWith("https://www.youtube.com/") ||

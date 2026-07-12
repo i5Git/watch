@@ -14,7 +14,6 @@ import {
 } from "@mantine/core";
 import { getCurrentSettings, updateSettings } from "./LocalSettings";
 import { serverPath } from "../../utils/utils";
-import { PermanentRoomModal } from "../Modal/PermanentRoomModal";
 import { Socket } from "socket.io-client";
 import { HexColorPicker, HexColorInput } from "react-colorful";
 import { MetadataContext } from "../../MetadataContext";
@@ -81,9 +80,8 @@ export const SettingsModal = ({
   mediaPath,
   setMediaPath,
 }: SettingsModalProps) => {
-  const { user, isSubscriber } = useContext(MetadataContext);
+  const { user } = useContext(MetadataContext);
   const [updateTS, setUpdateTS] = useState(0);
-  const [permModalOpen, setPermModalOpen] = useState(false);
   const [validVanity, setValidVanity] = useState(true);
   const [validVanityLoading, setValidVanityLoading] = useState(false);
   const [adminSettingsChanged, setAdminSettingsChanged] = useState(false);
@@ -142,11 +140,6 @@ export const SettingsModal = ({
   const disableOwning = !Boolean(user) || Boolean(owner && owner !== user?.uid);
   return (
     <>
-      {permModalOpen && (
-        <PermanentRoomModal
-          closeModal={() => setPermModalOpen(false)}
-        ></PermanentRoomModal>
-      )}
         <Modal
           opened={modalOpen}
           onClose={() => setModalOpen(false)}
@@ -162,22 +155,17 @@ export const SettingsModal = ({
             checked={Boolean(roomLock)}
             disabled={disableLocking && disableOwning}
             onChange={(e) => setRoomLock(Boolean(e.currentTarget.checked))}
-            label={!user ? "نیازمند ورود" : ""}
+            label={!user ? "نیازمند دسترسی" : ""}
           />
           <SettingRow
             toggle
             name={t("permanentRoom")}
             description="این اتاق منقضی نمی‌شود و امکانات بیشتری فعال می‌کند."
-            helpIcon={
-              <IconHelpCircle
-                onClick={() => setPermModalOpen(true)}
-                style={{ cursor: "pointer" }}
-              />
-            }
+            helpIcon={<IconHelpCircle />}
             checked={Boolean(owner)}
             disabled={disableOwning}
             onChange={(e) => setRoomOwner({ undo: !e.currentTarget.checked })}
-            label={!user ? "نیازمند ورود" : ""}
+            label={!user ? "نیازمند دسترسی" : ""}
           />
 
           <Divider my="lg" />
@@ -219,7 +207,7 @@ export const SettingsModal = ({
             content={
               <TextInput
                 label={t("roomPassword")}
-                description="برای ورود به اتاق، همراهان باید این رمز را بدانند."
+                description="برای پیوستن به اتاق، همراهان باید این رمز را بدانند."
                 value={password ?? ""}
                 placeholder={t("password")}
                 onChange={(e) => {
@@ -285,14 +273,13 @@ export const SettingsModal = ({
             // name={`Set Custom Room URL`}
             // description="Set a custom URL for this room. Inappropriate names may be revoked."
             checked={Boolean(roomLock)}
-            disabled={!isSubscriber}
-            subOnly={true}
+            disabled={false}
             content={
               <TextInput
                 label={t("customRoomUrl")}
                 description="یک نشانی کوتاه و اختصاصی برای این اتاق انتخاب کنید."
                 value={vanity ?? ""}
-                disabled={!isSubscriber}
+                disabled={false}
                 onChange={(e: any) => {
                   setAdminSettingsChanged(true);
                   checkValidVanity(e.target.value);
@@ -316,8 +303,7 @@ export const SettingsModal = ({
         {owner && owner === user?.uid && (
           <SettingRow
             toggle={false}
-            disabled={!isSubscriber}
-            subOnly={true}
+            disabled={false}
             content={
               <div
                 style={{ display: "flex", flexDirection: "column", gap: "4px" }}
@@ -326,7 +312,7 @@ export const SettingsModal = ({
                 label={`${t("roomTitle")}، ${t("roomDescription")}`}
                 description="عنوان و توضیح اتاق در نوار بالا نمایش داده می‌شود."
                   value={roomTitleInput ?? roomTitle ?? ""}
-                  disabled={!isSubscriber}
+                  disabled={false}
                   maxLength={roomTitleMaxCharLength}
                   onChange={(e) => {
                     setAdminSettingsChanged(true);
@@ -368,7 +354,7 @@ export const SettingsModal = ({
                       <Popover.Target>
                         <ActionIcon
                           color={roomTitleColorInput}
-                          disabled={!isSubscriber}
+                          disabled={false}
                         >
                           <IconPaintFilled size={16} />
                         </ActionIcon>
@@ -378,7 +364,7 @@ export const SettingsModal = ({
                 ></TextInput>
                 <TextInput
                   value={roomDescriptionInput ?? roomDescription ?? ""}
-                  disabled={!isSubscriber}
+                          disabled={false}
                   maxLength={roomDescriptionMaxCharLength}
                   onChange={(e: any) => {
                     setAdminSettingsChanged(true);

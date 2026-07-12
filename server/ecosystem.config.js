@@ -55,12 +55,6 @@ export const apps = [
     },
   },
   {
-    name: "syncSubs",
-    script: "./server/syncSubs.ts",
-    log_date_format: "YYYY-MM-DD HH:mm:ss Z",
-    interpreter: "node",
-  },
-  {
     name: "timeSeries",
     script: "./server/timeSeries.ts",
     log_date_format: "YYYY-MM-DD HH:mm:ss Z",
@@ -69,12 +63,6 @@ export const apps = [
   {
     name: "cleanup",
     script: "./server/cleanup.ts",
-    log_date_format: "YYYY-MM-DD HH:mm:ss Z",
-    interpreter: "node",
-  },
-  {
-    name: "discordBot",
-    script: "./server/discordBot.ts",
     log_date_format: "YYYY-MM-DD HH:mm:ss Z",
     interpreter: "node",
   },

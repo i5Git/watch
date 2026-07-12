@@ -1,8 +1,7 @@
-import React, { useCallback, useContext, useEffect } from "react";
+import React, { useCallback } from "react";
 import { Modal, PasswordInput, ActionIcon } from "@mantine/core";
 import { IconKey } from "@tabler/icons-react";
-import { addAndSavePassword, serverPath } from "../../utils/utils";
-import { MetadataContext } from "../../MetadataContext";
+import { addAndSavePassword } from "../../utils/utils";
 import { t } from "../../i18n";
 
 export const PasswordModal = ({ roomId }: { roomId: string }) => {
@@ -13,27 +12,7 @@ export const PasswordModal = ({ roomId }: { roomId: string }) => {
     addAndSavePassword(roomId, password);
     window.location.reload();
   }, [roomId]);
-  const { user } = useContext(MetadataContext);
-  useEffect(() => {
-    const update = async () => {
-      // Make sure we have the password for this room if we're the owner
-      if (user) {
-        const token = await user.getIdToken();
-        const response = await fetch(
-          serverPath + `/listRooms?uid=${user.uid}&token=${token}`,
-        );
-        if (response.ok) {
-          const rooms = await response.json();
-          const target = rooms.find((r: any) => r.roomId === roomId);
-          if (target?.password) {
-            addAndSavePassword(target.roomId, target.password);
-            window.location.reload();
-          }
-        }
-      }
-    };
-    update();
-  }, [user]);
+
   return (
     <Modal
       onClose={() => {}}

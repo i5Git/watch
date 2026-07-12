@@ -73,7 +73,7 @@ export class SearchComponent extends React.Component<SearchComponentProps> {
   };
 
   render() {
-    let placeholder = "جست‌وجو یا ورود مگنت";
+    let placeholder = "جست‌وجو یا افزودن مگنت";
     let icon = <IconMovie />;
     if (this.props.type === "youtube") {
       placeholder = "جست‌وجوی یوتیوب";

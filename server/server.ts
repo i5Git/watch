@@ -10,22 +10,36 @@ import { Server } from "socket.io";
 import { searchYoutube, youtubePlaylist } from "./utils/youtube.ts";
 import { Room } from "./room.ts";
 import { redis, redisCount } from "./utils/redis.ts";
-import {
-  getCustomerByEmail,
-  createSelfServicePortal,
-  getIsSubscriberByEmail,
-} from "./utils/stripe.ts";
-import { deleteUser, validateUserToken } from "./utils/firebase.ts";
 import path from "node:path";
 import { getStartOfDay } from "./utils/time.ts";
 import { getSessionLimitSeconds } from "./vm/utils.ts";
-import { postgres, insertObject, upsertObject } from "./utils/postgres.ts";
+import { postgres, insertObject } from "./utils/postgres.ts";
 import axios, { isAxiosError } from "axios";
 import crypto from "node:crypto";
 import { gzipSync } from "node:zlib";
 import { resolveShard } from "./utils/resolveShard.ts";
 import { makeRoomName, makeUserName } from "./utils/moniker.ts";
 import { getStats } from "./utils/getStats.ts";
+import {
+  clearSessionCookie,
+  createManagedUser,
+  deleteManagedUser,
+  ensureAuthStore,
+  getUserFromCookie,
+  getUserFromRequest,
+  listManagedUsers,
+  login,
+  requireAdmin,
+  requireAuth,
+  setSessionCookie,
+  updateManagedUser,
+} from "./auth.ts";
+import {
+  getMedia,
+  getMediaDirectory,
+  listMedia,
+  uploadMedia,
+} from "./media.ts";
 
 if (process.env.NODE_ENV === "development") {
   axios.interceptors.request.use(
@@ -41,6 +55,7 @@ if (process.env.NODE_ENV === "development") {
 
 const releaseInterval = 5 * 60 * 1000;
 const app = express();
+ensureAuthStore();
 let server = null as https.Server | http.Server | null;
 if (config.SSL_KEY_FILE && config.SSL_CRT_FILE) {
   const key = fs.readFileSync(config.SSL_KEY_FILE);
@@ -51,7 +66,19 @@ if (config.SSL_KEY_FILE && config.SSL_CRT_FILE) {
 }
 server?.listen(config.PORT, config.HOST);
 
-const io = new Server(server, { cors: {}, transports: ["websocket"] });
+const io = new Server(server, {
+  cors: { origin: true, credentials: true },
+  transports: ["websocket"],
+});
+io.use((socket, next) => {
+  const user = getUserFromCookie(socket.handshake.headers.cookie);
+  if (!user) {
+    next(new Error("authentication required"));
+    return;
+  }
+  socket.data.appUser = user;
+  next();
+});
 io.engine.use(async (req: any, res: Response, next: () => void) => {
   const roomId = req._query.roomId;
   if (!roomId) {
@@ -96,20 +123,112 @@ setInterval(saveRooms, 1000);
 if (process.env.NODE_ENV === "development") {
   try {
     import("./vmWorker.ts");
-    // import('./syncSubs.ts');
     // import('./timeSeries.ts');
   } catch (e) {
     console.error(e);
   }
 }
 
-app.use(cors());
+app.use(cors({ origin: true, credentials: true }));
 app.use(bodyParser.json());
 app.use(bodyParser.raw({ type: "text/plain", limit: 1000000 }));
 
 app.get("/ping", (_req, res) => {
   res.json("pong");
 });
+
+app.post("/api/auth/login", (req, res) => {
+  const result = login(req.body?.username, req.body?.password);
+  if (!result) {
+    res.status(401).json({ error: "نام کاربری یا رمز عبور نادرست است." });
+    return;
+  }
+  setSessionCookie(req, res, result.token);
+  res.json(result.user);
+});
+
+app.post("/api/auth/logout", (req, res) => {
+  clearSessionCookie(res);
+  res.json({});
+});
+
+app.get("/api/auth/session", (req, res) => {
+  const user = getUserFromRequest(req);
+  if (!user) {
+    res.status(401).json({ error: "authentication required" });
+    return;
+  }
+  res.json(user);
+});
+
+app.get("/api/admin/users", requireAdmin, (_req, res) => {
+  res.json(listManagedUsers());
+});
+
+app.post("/api/admin/users", requireAdmin, (req, res) => {
+  try {
+    res.status(201).json(
+      createManagedUser(req.body?.username, req.body?.password, req.body?.role),
+    );
+  } catch (error: any) {
+    res.status(400).json({ error: error?.message || "Unable to create user." });
+  }
+});
+
+app.patch("/api/admin/users/:username", requireAdmin, (req, res) => {
+  try {
+    res.json(updateManagedUser(req.params.username, req.body || {}));
+  } catch (error: any) {
+    res.status(400).json({ error: error?.message || "Unable to update user." });
+  }
+});
+
+app.delete("/api/admin/users/:username", requireAdmin, (req, res) => {
+  try {
+    deleteManagedUser(req.params.username);
+    res.json({});
+  } catch (error: any) {
+    res.status(400).json({ error: error?.message || "Unable to delete user." });
+  }
+});
+
+app.get("/api/media", requireAuth, (req, res) => {
+  res.json(listMedia(req.appUser!));
+});
+
+app.get("/api/media/:id", requireAuth, (req, res) => {
+  const record = getMedia(req.params.id, req.appUser!);
+  if (!record) {
+    res.status(404).json({ error: "media not found" });
+    return;
+  }
+  res.json(record);
+});
+
+app.post("/api/media/upload", requireAuth, async (req, res) => {
+  try {
+    const encodedFilename = req.header("x-file-name") || "video";
+    const filename = decodeURIComponent(encodedFilename);
+    const convertToMp4 = req.header("x-convert-mp4") === "true";
+    const contentLength = Number(req.header("content-length") || 0);
+    if (
+      contentLength &&
+      contentLength > Number(config.UPLOAD_MAX_BYTES || 20 * 1024 * 1024 * 1024)
+    ) {
+      res.status(413).json({ error: "The uploaded file is too large." });
+      return;
+    }
+    req.setTimeout(0);
+    const record = await uploadMedia(req, req.appUser!, filename, convertToMp4);
+    res.status(convertToMp4 ? 202 : 201).json(record);
+  } catch (error: any) {
+    res.status(400).json({
+      error: error?.message || "The server could not save this upload.",
+    });
+  }
+});
+
+app.use("/media", express.static(getMediaDirectory(), { acceptRanges: true }));
 
 // Data's already compressed so go before the compression middleware
 app.get("/subtitle/:hash", async (req, res) => {
@@ -290,7 +409,7 @@ app.get("/youtubePlaylist/:playlistId", async (req, res) => {
   }
 });
 
-app.post("/createRoom", async (req, res) => {
+app.post("/createRoom", requireAuth, async (req, res) => {
   const genName = () => "/" + makeRoomName(config.SHARD);
   let name = genName();
   console.log("createRoom: ", name);
@@ -299,6 +418,7 @@ app.post("/createRoom", async (req, res) => {
     const now = new Date();
     const roomObj = {
       roomId: newRoom.roomId,
+      owner: req.appUser?.username,
       lastUpdateTime: now,
       creationTime: now,
     };
@@ -309,8 +429,7 @@ app.post("/createRoom", async (req, res) => {
       throw e;
     }
   }
-  const decoded = await validateUserToken(req.body?.uid, req.body?.token);
-  newRoom.creator = decoded?.email;
+  newRoom.creator = req.appUser?.username;
   const preload = (req.body?.video || "").slice(0, 20000);
   if (preload) {
     redisCount("createRoomPreload");
@@ -326,92 +445,6 @@ app.post("/createRoom", async (req, res) => {
   }
   rooms.set(name, newRoom);
   res.json({ name });
-});
-
-app.post("/manageSub", async (req, res) => {
-  const decoded = await validateUserToken(
-    String(req.body?.uid),
-    String(req.body?.token),
-  );
-  if (!decoded) {
-    res.status(400).json({ error: "invalid user token" });
-    return;
-  }
-  if (!decoded.email) {
-    res.status(400).json({ error: "no email found" });
-    return;
-  }
-  const customer = await getCustomerByEmail(decoded.email);
-  if (!customer) {
-    res.status(400).json({ error: "customer not found" });
-    return;
-  }
-  const session = await createSelfServicePortal(
-    customer.id,
-    req.body?.return_url,
-  );
-  res.json(session);
-});
-
-app.delete("/deleteAccount", async (req, res) => {
-  // TODO pass this in req.query instead
-  const decoded = await validateUserToken(req.body?.uid, req.body?.token);
-  if (!decoded) {
-    res.status(400).json({ error: "invalid user token" });
-    return;
-  }
-  if (postgres) {
-    // Delete rooms
-    await postgres.query("DELETE FROM room WHERE owner = $1", [decoded.uid]);
-    // Delete linked accounts
-    await postgres.query("DELETE FROM link_account WHERE uid = $1", [
-      decoded.uid,
-    ]);
-  }
-  await deleteUser(decoded.uid);
-  redisCount("deleteAccount");
-  res.json({});
-});
-
-app.get("/metadata", async (req, res) => {
-  const decoded = await validateUserToken(
-    String(req.query?.uid),
-    String(req.query?.token),
-  );
-  let isSubscriber = await getIsSubscriberByEmail(decoded?.email);
-  // Has the user ever been a subscriber?
-  // const customer = await getCustomerByEmail(decoded.email);
-  let isFreePoolFull = false;
-  try {
-    isFreePoolFull = (
-      await axios.get(
-        "http://localhost:" + config.VMWORKER_PORT + "/isFreePoolFull",
-      )
-    ).data.isFull;
-  } catch (e: any) {
-    console.warn("[WARNING]: free pool check failed: %s", e.code);
-  }
-  const beta =
-    decoded?.email != null &&
-    Boolean(config.BETA_USER_EMAILS.split(",").includes(decoded?.email));
-  const streamPath = beta ? config.STREAM_PATH : undefined;
-  const convertPath = isSubscriber ? config.CONVERT_PATH : undefined;
-  // log metrics but don't wait for it
-  if (postgres && decoded?.uid) {
-    upsertObject(
-      postgres,
-      "active_user",
-      { uid: decoded?.uid, lastActiveTime: new Date() },
-      { uid: true },
-    );
-  }
-  res.json({
-    isSubscriber,
-    isFreePoolFull,
-    beta,
-    streamPath,
-    convertPath,
-  });
 });
 
 app.get("/resolveRoom/:vanity", async (req, res) => {
@@ -439,129 +472,6 @@ app.get("/roomData/:roomId", async (req, res) => {
 app.get("/resolveShard/:roomId", async (req, res) => {
   const shardNum = resolveShard(req.params.roomId);
   res.send(String(config.SHARD ? shardNum : ""));
-});
-
-app.get("/listRooms", async (req, res) => {
-  const decoded = await validateUserToken(
-    String(req.query?.uid),
-    String(req.query?.token),
-  );
-  if (!decoded) {
-    res.status(400).json({ error: "invalid user token" });
-    return;
-  }
-  const result = await postgres?.query<PersistentRoom>(
-    `SELECT "roomId", vanity, password from room WHERE owner = $1`,
-    [decoded.uid],
-  );
-  res.json(result?.rows ?? []);
-});
-
-app.delete("/deleteRoom", async (req, res) => {
-  const decoded = await validateUserToken(
-    String(req.query?.uid),
-    String(req.query?.token),
-  );
-  if (!decoded) {
-    res.status(400).json({ error: "invalid user token" });
-    return;
-  }
-  const result = await postgres?.query(
-    `DELETE from room WHERE owner = $1 and "roomId" = $2`,
-    [decoded.uid, req.query.roomId],
-  );
-  res.json(result?.rows);
-});
-
-app.get("/linkAccount", async (req, res) => {
-  const decoded = await validateUserToken(
-    String(req.query?.uid),
-    String(req.query?.token),
-  );
-  if (!decoded) {
-    res.status(400).json({ error: "invalid user token" });
-    return;
-  }
-  if (!postgres) {
-    res.status(400).json({ error: "invalid database client" });
-    return;
-  }
-  // Get the linked accounts for the user
-  let linkAccounts: LinkAccount[] = [];
-  if (decoded?.uid && postgres) {
-    const { rows } = await postgres.query(
-      "SELECT kind, accountid, accountname, discriminator FROM link_account WHERE uid = $1",
-      [decoded?.uid],
-    );
-    linkAccounts = rows;
-  }
-  res.json(linkAccounts);
-});
-
-app.post("/linkAccount", async (req, res) => {
-  const decoded = await validateUserToken(
-    String(req.body?.uid),
-    String(req.body?.token),
-  );
-  if (!decoded) {
-    res.status(400).json({ error: "invalid user token" });
-    return;
-  }
-  if (!postgres) {
-    res.status(400).json({ error: "invalid database client" });
-    return;
-  }
-  const kind = req.body?.kind;
-  if (kind === "discord") {
-    const tokenType = req.body?.tokenType;
-    const accessToken = req.body.accessToken;
-    // Get the token and verify the user
-    const response = await axios.get("https://discord.com/api/users/@me", {
-      headers: {
-        authorization: `${tokenType} ${accessToken}`,
-      },
-    });
-    const accountid = response.data.id;
-    const accountname = response.data.username;
-    const discriminator = response.data.discriminator;
-    // Store the user id, username, discriminator
-    await upsertObject(
-      postgres,
-      "link_account",
-      {
-        accountid: accountid,
-        accountname: accountname,
-        discriminator: discriminator,
-        uid: decoded.uid,
-        kind: kind,
-      },
-      { uid: true, kind: true },
-    );
-    res.json({});
-  } else {
-    res.status(400).json({ error: "unsupported kind" });
-  }
-});
-
-app.delete("/linkAccount", async (req, res) => {
-  // TODO read from req.query instead
-  const decoded = await validateUserToken(
-    String(req.body?.uid),
-    String(req.body?.token),
-  );
-  if (!decoded) {
-    res.status(400).json({ error: "invalid user token" });
-    return;
-  }
-  if (!postgres) {
-    res.status(400).json({ error: "invalid database client" });
-    return;
-  }
-  await postgres.query(
-    "DELETE FROM link_account WHERE uid = $1 AND kind = $2",
-    [decoded.uid, req.body.kind],
-  );
-  res.json({});
 });
 
 app.get("/generateName", async (req, res) => {

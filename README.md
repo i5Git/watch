@@ -1,19 +1,19 @@
 # Watch
 
-Watch is a private watch-together app for synchronized video playback, room chat, subtitles, and mobile-friendly rooms.
+Watch is a private watch-together app for synchronized playback, Persian RTL chat, subtitles, and mobile-friendly rooms.
 
-This is the standalone Watch repository, based on the open-source WatchParty project. The upstream project and its contributors remain credited in the repository history and [LICENSE](./LICENSE). Watch keeps the original MIT license obligations.
+This is a standalone redesign based on the open-source WatchParty project. The upstream MIT license notice remains in [LICENSE](./LICENSE).
 
-## What changed
+## Included in this version
 
-- Rebranded the product UI to **Watch**.
-- Rebuilt the landing page and room workspace with a maintainable dark cinema design system.
-- Added Persian-first RTL behavior for navigation, room controls, chat, forms, menus, and responsive mobile layouts.
-- Removed profile photos and avatar rendering from visible room and account flows.
-- Removed visible GitHub and Discord credit links from the product UI.
-- Preserved synchronized rooms, direct MP4/HLS playback, chat, playlists, subtitles, screen sharing, file sharing, and optional virtual-browser support.
-- Removed upstream client credential defaults and hard-coded TURN credentials. Configure those values through `.env`.
-- Added an Ubuntu installer with Docker Compose by default and an optional native systemd path.
+- Local username/password access gate with no public signup.
+- Admin panel for creating users, resetting passwords, disabling users, and deleting users.
+- Synchronized rooms with direct MP4/HLS playback, playlists, chat, subtitles, and invite links.
+- Upload a video to the VPS and play it from the room.
+- Optional server-side FFmpeg conversion to browser-friendly MP4 (H.264 video + AAC audio) for iPhone Safari.
+- Persian-first RTL layout across navigation, forms, menus, chat, room settings, and admin tools.
+- Compact mobile chat below the player and translucent fullscreen chat over the media.
+- No subscription, billing, OAuth, profile-picture, GitHub-credit, or Discord-credit product surfaces.
 
 ## Quick start on Ubuntu
 
@@ -23,7 +23,7 @@ The easiest deployment path downloads the installer, clones Watch into `/opt/wat
 curl -fsSL https://raw.githubusercontent.com/i5Git/watch-together/main/scripts/install-ubuntu.sh | bash -s -- --yes
 ```
 
-The installer defaults to port `8080` and Docker Compose. It prints the final URL and status/log commands when it finishes.
+The installer defaults to port `8080` and Docker Compose. It creates a strong admin password when one is not supplied, persists users and media under `data/`, and prints the final URL, admin username, and generated password.
 
 For an interactive setup:
 
@@ -41,7 +41,7 @@ curl -fsSL https://raw.githubusercontent.com/i5Git/watch-together/main/scripts/i
 curl -fsSL https://raw.githubusercontent.com/i5Git/watch-together/main/scripts/install-ubuntu.sh | \
   bash -s -- --yes --dir /srv/watch --port 8080
 
-# Prompt for optional Firebase, Stripe, TURN, Postgres, and Redis configuration.
+# Prompt for optional TURN, YouTube, Postgres, and Redis configuration.
 curl -fsSL https://raw.githubusercontent.com/i5Git/watch-together/main/scripts/install-ubuntu.sh | \
   bash -s -- --advanced
 ```
@@ -85,13 +85,18 @@ The Vite UI runs on its development port and the Node server defaults to port `8
 
 ## Configuration
 
-All configuration is optional unless you need authentication, permanent rooms, subscriptions, external media search, Redis, Postgres, TURN, or virtual-browser management.
+The important server values are:
 
-- Client-side build variables are documented in `.env.example`.
-- Server-side variables and defaults are documented in `server/config.ts`.
-- Never commit `.env`, Firebase Admin JSON, Stripe secret keys, database URLs, Redis URLs, or TURN credentials.
+- `ADMIN_USERNAME` and `ADMIN_PASSWORD`: seed the first administrator on a new data directory.
+- `AUTH_DATA_DIR`: user/session data directory. Default: `data`.
+- `MEDIA_DATA_DIR`: uploaded media directory. Default: `data/media`.
+- `UPLOAD_MAX_BYTES`: upload limit in bytes.
+- `FFMPEG_PATH`: FFmpeg executable. Docker uses the image-installed `ffmpeg`.
+- `DATABASE_URL`, `REDIS_URL`, `YOUTUBE_API_KEY`, and TURN settings are optional.
 
-For browser-compatible direct media playback, use MP4 files with H.264/AAC or HLS streams that support HTTP range requests. MKV compatibility depends on the browser and codecs inside the container.
+Do not commit `.env`, database URLs, Redis URLs, TURN credentials, or other secrets. Keep the Docker Compose `./data:/usr/src/data` volume so users and uploaded media survive updates.
+
+For direct browser playback, MP4 with H.264/AAC or HLS is the safest choice. MKV and other containers can be uploaded and converted through the room upload dialog.
 
 ## License
 

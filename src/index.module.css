@@ -1,0 +1,6 @@
+.loading {
+  display: grid;
+  min-height: 100dvh;
+  place-items: center;
+  background: var(--watch-bg);
+}

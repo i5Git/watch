@@ -144,7 +144,9 @@ export const Controls = (props: ControlsProps) => {
 
   if (props.fullscreen && props.chatOpen && props.onToggleChat) {
     return (
-      <div className={`${styles.controls} ${styles.chatOnlyControls}`}>
+      <div
+        className={`${styles.controls} ${styles.fullscreen} ${styles.chatOnlyControls}`}
+      >
         <Button
           className={styles.chatToggleButton}
           size="compact-sm"
@@ -159,7 +161,7 @@ export const Controls = (props: ControlsProps) => {
   }
 
   return (
-    <div className={styles.controls}>
+    <div className={`${styles.controls} ${props.fullscreen ? styles.fullscreen : ""}`}>
       {props.fullscreen && props.onToggleChat && (
         <Button
           className={styles.chatToggleButton}
@@ -194,6 +196,7 @@ export const Controls = (props: ControlsProps) => {
       >
         <Button
           size="compact-xs"
+          className={styles.syncButton}
           color={isBehind ? "blue" : "grey"}
           title="همگام‌سازی"
           onClick={() => {
