@@ -261,7 +261,7 @@ export class App extends React.Component<AppProps, AppState> {
 
   async componentDidMount() {
     document.addEventListener("fullscreenchange", this.onFullScreenChange);
-    document.onkeydown = this.onKeydown;
+    document.addEventListener("keydown", this.onKeydown);
 
     // Send heartbeat to the server
     this.heartbeat = window.setInterval(
@@ -1769,8 +1769,10 @@ export class App extends React.Component<AppProps, AppState> {
     if (!this.state.fullScreen) {
       return;
     }
-    this.setState({ fullscreenControlsVisible: true });
-    this.scheduleFullscreenControlsHide();
+    this.setState(
+      { fullscreenControlsVisible: true },
+      this.scheduleFullscreenControlsHide,
+    );
   };
 
   clearFullscreenMessageTimer = () => {
@@ -1789,12 +1791,10 @@ export class App extends React.Component<AppProps, AppState> {
     }, 3000);
   };
 
-  handleVideoClick = () => {
-    if (this.state.fullScreen && !this.state.fullscreenControlsVisible) {
+  handleVideoInteraction = () => {
+    if (this.state.fullScreen) {
       this.showFullscreenControls();
-      return;
     }
-    this.roomTogglePlay();
   };
 
   onFullScreenChange = () => {
@@ -1843,93 +1843,51 @@ export class App extends React.Component<AppProps, AppState> {
     }
   };
 
-  localFullScreen = async (bVideoOnly: boolean) => {
-    // iPhone Safari does not expose a DOM overlay while using native video
-    // fullscreen, so use a fixed room surface on small screens instead.
-    if (isCompactViewport()) {
-      const fullScreen = !this.state.fullScreen;
-      this.setState(
-        {
-          fullScreen,
-          fullscreenChatOpen: false,
-          fullscreenControlsVisible: fullScreen,
-          fullscreenChatMessage: null,
-        },
-        () => {
-          this.syncFullscreenBodyClass(fullScreen);
-          if (fullScreen) {
-            this.scheduleFullscreenControlsHide();
-          } else {
-            this.clearFullscreenControlsTimer();
-            this.clearFullscreenMessageTimer();
-          }
-          setTimeout(() => this.chatRef.current?.scrollToBottom(), 100);
-        },
-      );
-      return;
-    }
-
-    // Fullscreen the room surface so controls and the chat overlay remain
-    // descendants of the browser's fullscreen element.
-    const container =
-      (bVideoOnly
-        ? document.getElementById("watch-room-layout")
-        : document.body) ?? document.body;
-
-    if (!container.requestFullscreen) {
-      const fullScreen = !this.state.fullScreen;
-      this.setState(
-        {
-          fullScreen,
-          fullscreenChatOpen: false,
-          fullscreenControlsVisible: fullScreen,
-          fullscreenChatMessage: null,
-        },
-        () => {
-          this.syncFullscreenBodyClass(fullScreen);
-          if (fullScreen) {
-            this.scheduleFullscreenControlsHide();
-          } else {
-            this.clearFullscreenControlsTimer();
-            this.clearFullscreenMessageTimer();
-          }
-        },
-      );
-      return;
-    }
-
-    try {
-      if (!document.fullscreenElement) {
-        // not currently in fullscreen
-        await container.requestFullscreen();
-      } else {
-        // e.g. switching from video fullscreen to theater mode
-        const bChangeElements = document.fullscreenElement !== container;
-        await document.exitFullscreen();
-        if (bChangeElements) {
-          await container.requestFullscreen();
+  setCustomFullscreen = (fullScreen: boolean) => {
+    this.setState(
+      {
+        fullScreen,
+        fullscreenChatOpen: false,
+        fullscreenControlsVisible: fullScreen,
+        fullscreenChatMessage: null,
+      },
+      () => {
+        this.syncFullscreenBodyClass(fullScreen);
+        if (fullScreen) {
+          this.scheduleFullscreenControlsHide();
+        } else {
+          this.clearFullscreenControlsTimer();
+          this.clearFullscreenMessageTimer();
         }
-      }
-    } catch {
-      const fullScreen = !this.state.fullScreen;
-      this.setState(
-        {
-          fullScreen,
-          fullscreenChatOpen: false,
-          fullscreenControlsVisible: fullScreen,
-          fullscreenChatMessage: null,
-        },
-        () => {
-          this.syncFullscreenBodyClass(fullScreen);
-          if (fullScreen) {
-            this.scheduleFullscreenControlsHide();
-          } else {
-            this.clearFullscreenControlsTimer();
-            this.clearFullscreenMessageTimer();
-          }
-        },
-      );
+        setTimeout(() => this.chatRef.current?.scrollToBottom(), 100);
+      },
+    );
+  };
+
+  localFullScreen = async (requestNativeFullscreen: boolean) => {
+    const container =
+      document.getElementById("watch-room-layout") ?? document.body;
+
+    if (document.fullscreenElement) {
+      await document.exitFullscreen();
+      return;
     }
+
+    if (this.state.fullScreen) {
+      this.setCustomFullscreen(false);
+      return;
+    }
+
+    if (requestNativeFullscreen && container.requestFullscreen) {
+      try {
+        await container.requestFullscreen();
+        return;
+      } catch {
+        // Use the fixed cinema surface when fullscreen is unavailable/rejected.
+      }
+    }
+
+    this.setCustomFullscreen(true);
   };
 
   localToggleMute = () => {
@@ -2470,7 +2428,7 @@ export class App extends React.Component<AppProps, AppState> {
                         id="leftVideo"
                         onEnded={(e) => this.onVideoEnded(e.currentTarget.src)}
                         playsInline
-                        onClick={this.handleVideoClick}
+                        onPointerDown={this.handleVideoInteraction}
                       ></video>
                     )}
                     {this.state.fullScreen && this.state.roomMedia && (

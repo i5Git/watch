@@ -1,0 +1,20 @@
+{
+  "id": "/",
+  "name": "Watch",
+  "short_name": "Watch",
+  "description": "A private place to watch together.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#050912",
+  "theme_color": "#0b1020",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/logo192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
