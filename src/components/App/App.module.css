@@ -23,7 +23,7 @@
   min-width: 100vw;
   max-width: none;
   height: 100dvh;
-  min-height: 100dvh;
+  min-height: 100svh;
   margin: 0;
   padding: 0;
   box-sizing: border-box;
@@ -82,6 +82,66 @@
     max(4px, env(safe-area-inset-bottom))
     max(4px, env(safe-area-inset-left));
   pointer-events: auto;
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease;
+}
+
+.fullscreenControlsHidden {
+  opacity: 0;
+  transform: translateY(100%);
+  pointer-events: none;
+}
+
+.fullscreenMessageToast {
+  position: absolute;
+  right: 50%;
+  bottom: calc(70px + max(8px, env(safe-area-inset-bottom)));
+  z-index: 36;
+  display: flex;
+  max-width: min(88vw, 560px);
+  align-items: center;
+  gap: 9px;
+  padding: 8px 14px;
+  transform: translateX(50%);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  color: var(--watch-text);
+  background: rgba(10, 16, 29, 0.76);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.34);
+  -webkit-backdrop-filter: blur(18px) saturate(1.2);
+  backdrop-filter: blur(18px) saturate(1.2);
+  direction: rtl;
+  pointer-events: none;
+  animation: fullscreenMessageIn 180ms ease-out;
+}
+
+.fullscreenMessageAuthor {
+  flex: 0 0 auto;
+  color: var(--watch-coral);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.fullscreenMessageText {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@keyframes fullscreenMessageIn {
+  from {
+    opacity: 0;
+    transform: translate(50%, 8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate(50%, 0);
+  }
 }
 
 .fullscreenChatOverlay {
@@ -450,16 +510,42 @@
 
 @media (orientation: landscape) and (max-height: 600px) {
   .fullscreenChatPanel {
-    right: auto;
-    left: 50%;
-    width: min(720px, calc(100% - 24px));
-    height: min(54dvh, 260px);
-    transform: translateX(-50%);
+    right: max(12px, env(safe-area-inset-right));
+    left: auto;
+    width: min(380px, 42vw);
+    height: min(72dvh, 360px);
+    max-height: calc(100% - 104px);
+    transform: none;
   }
 
   .fullscreenChatHeader {
     min-height: 42px;
     padding-block: 5px;
+  }
+
+  .fullscreenChatPanel .fullscreenChatInner {
+    min-height: 0;
+  }
+}
+
+@media (orientation: landscape) and (pointer: coarse) {
+  .fullscreenLayout {
+    min-height: 100svh;
+    height: 100dvh;
+  }
+
+  .fullscreenChatPanel {
+    right: max(12px, env(safe-area-inset-right));
+    left: auto;
+    width: min(380px, 42vw);
+    height: min(72dvh, 360px);
+    max-height: calc(100% - 104px);
+    transform: none;
+  }
+
+  .fullscreenChatHeader {
+    min-height: 44px;
+    padding-block: 6px;
   }
 
   .fullscreenChatPanel .fullscreenChatInner {

@@ -86,7 +86,9 @@ const clientId = getOrCreateClientId();
 const isCompactViewport = () =>
   isMobile() ||
   (typeof window !== "undefined" &&
-    window.matchMedia("(max-width: 900px)").matches);
+    (window.matchMedia("(max-width: 900px)").matches ||
+      (navigator.maxTouchPoints > 0 &&
+        window.matchMedia("(max-width: 1366px)").matches)));
 
 interface AppProps {
   vanity?: string;
@@ -111,6 +113,8 @@ interface AppState {
   unreadCount: number;
   fullScreen: boolean;
   fullscreenChatOpen: boolean;
+  fullscreenControlsVisible: boolean;
+  fullscreenChatMessage: ChatMessage | null;
   controlsTimestamp: number;
   watchOptions: SearchResult[];
   isVBrowser: boolean;
@@ -180,6 +184,8 @@ export class App extends React.Component<AppProps, AppState> {
     unreadCount: 0,
     fullScreen: false,
     fullscreenChatOpen: false,
+    fullscreenControlsVisible: true,
+    fullscreenChatMessage: null,
     controlsTimestamp: 0,
     watchOptions: [],
     isVBrowser: false,
@@ -239,6 +245,8 @@ export class App extends React.Component<AppProps, AppState> {
   consumerConn?: RTCPeerConnection;
   progressUpdater?: number;
   heartbeat: number | undefined = undefined;
+  fullscreenControlsTimer: number | undefined;
+  fullscreenMessageTimer: number | undefined;
   YouTubeInterface: YouTube = new YouTube(null);
   HTMLInterface: HTML = new HTML("leftVideo");
   Player = () => {
@@ -273,6 +281,9 @@ export class App extends React.Component<AppProps, AppState> {
   componentWillUnmount() {
     document.removeEventListener("fullscreenchange", this.onFullScreenChange);
     document.removeEventListener("keydown", this.onKeydown);
+    this.clearFullscreenControlsTimer();
+    this.clearFullscreenMessageTimer();
+    document.documentElement.classList.remove("watch-fullscreen");
     document.body.classList.remove("watch-fullscreen");
     window.clearInterval(this.heartbeat);
   }
@@ -675,18 +686,18 @@ export class App extends React.Component<AppProps, AppState> {
       ) {
         new Audio("/clearly.mp3").play();
       }
-      this.state.chat.push(data);
-      if (this.state.chat.length > 100) {
-        this.state.chat.shift();
-      }
-      this.setState({
-        chat: this.state.chat,
+      const isTextMessage = !data.system && !data.cmd && Boolean(data.msg);
+      this.setState((state) => ({
+        chat: [...state.chat, data].slice(-100),
         scrollTimestamp: Date.now(),
         unreadCount:
-          this.state.currentTab === "chat"
-            ? this.state.unreadCount
-            : this.state.unreadCount + 1,
-      });
+          state.currentTab === "chat"
+            ? state.unreadCount
+            : state.unreadCount + 1,
+      }));
+      if (isTextMessage && this.state.fullScreen) {
+        this.showFullscreenMessage(data);
+      }
     });
     socket.on("REC:addReaction", (data: Reaction) => {
       const { chat } = this.state;
@@ -1736,21 +1747,80 @@ export class App extends React.Component<AppProps, AppState> {
     return target;
   };
 
+  clearFullscreenControlsTimer = () => {
+    if (this.fullscreenControlsTimer !== undefined) {
+      window.clearTimeout(this.fullscreenControlsTimer);
+      this.fullscreenControlsTimer = undefined;
+    }
+  };
+
+  scheduleFullscreenControlsHide = () => {
+    this.clearFullscreenControlsTimer();
+    if (!this.state.fullScreen) {
+      return;
+    }
+    this.fullscreenControlsTimer = window.setTimeout(() => {
+      this.fullscreenControlsTimer = undefined;
+      this.setState({ fullscreenControlsVisible: false });
+    }, 5000);
+  };
+
+  showFullscreenControls = () => {
+    if (!this.state.fullScreen) {
+      return;
+    }
+    this.setState({ fullscreenControlsVisible: true });
+    this.scheduleFullscreenControlsHide();
+  };
+
+  clearFullscreenMessageTimer = () => {
+    if (this.fullscreenMessageTimer !== undefined) {
+      window.clearTimeout(this.fullscreenMessageTimer);
+      this.fullscreenMessageTimer = undefined;
+    }
+  };
+
+  showFullscreenMessage = (message: ChatMessage) => {
+    this.clearFullscreenMessageTimer();
+    this.setState({ fullscreenChatMessage: message });
+    this.fullscreenMessageTimer = window.setTimeout(() => {
+      this.fullscreenMessageTimer = undefined;
+      this.setState({ fullscreenChatMessage: null });
+    }, 3000);
+  };
+
+  handleVideoClick = () => {
+    if (this.state.fullScreen && !this.state.fullscreenControlsVisible) {
+      this.showFullscreenControls();
+      return;
+    }
+    this.roomTogglePlay();
+  };
+
   onFullScreenChange = () => {
     const fullScreen = Boolean(document.fullscreenElement);
     this.setState(
       {
         fullScreen,
         fullscreenChatOpen: false,
+        fullscreenControlsVisible: fullScreen,
+        fullscreenChatMessage: null,
       },
       () => {
         this.syncFullscreenBodyClass(fullScreen);
+        if (fullScreen) {
+          this.scheduleFullscreenControlsHide();
+        } else {
+          this.clearFullscreenControlsTimer();
+          this.clearFullscreenMessageTimer();
+        }
         setTimeout(() => this.chatRef.current?.scrollToBottom(), 100);
       },
     );
   };
 
   syncFullscreenBodyClass = (fullScreen: boolean) => {
+    document.documentElement.classList.toggle("watch-fullscreen", fullScreen);
     document.body.classList.toggle("watch-fullscreen", fullScreen);
   };
 
@@ -1782,9 +1852,17 @@ export class App extends React.Component<AppProps, AppState> {
         {
           fullScreen,
           fullscreenChatOpen: false,
+          fullscreenControlsVisible: fullScreen,
+          fullscreenChatMessage: null,
         },
         () => {
           this.syncFullscreenBodyClass(fullScreen);
+          if (fullScreen) {
+            this.scheduleFullscreenControlsHide();
+          } else {
+            this.clearFullscreenControlsTimer();
+            this.clearFullscreenMessageTimer();
+          }
           setTimeout(() => this.chatRef.current?.scrollToBottom(), 100);
         },
       );
@@ -1804,8 +1882,18 @@ export class App extends React.Component<AppProps, AppState> {
         {
           fullScreen,
           fullscreenChatOpen: false,
+          fullscreenControlsVisible: fullScreen,
+          fullscreenChatMessage: null,
         },
-        () => this.syncFullscreenBodyClass(fullScreen),
+        () => {
+          this.syncFullscreenBodyClass(fullScreen);
+          if (fullScreen) {
+            this.scheduleFullscreenControlsHide();
+          } else {
+            this.clearFullscreenControlsTimer();
+            this.clearFullscreenMessageTimer();
+          }
+        },
       );
       return;
     }
@@ -1828,8 +1916,18 @@ export class App extends React.Component<AppProps, AppState> {
         {
           fullScreen,
           fullscreenChatOpen: false,
+          fullscreenControlsVisible: fullScreen,
+          fullscreenChatMessage: null,
         },
-        () => this.syncFullscreenBodyClass(fullScreen),
+        () => {
+          this.syncFullscreenBodyClass(fullScreen);
+          if (fullScreen) {
+            this.scheduleFullscreenControlsHide();
+          } else {
+            this.clearFullscreenControlsTimer();
+            this.clearFullscreenMessageTimer();
+          }
+        },
       );
     }
   };
@@ -2372,8 +2470,35 @@ export class App extends React.Component<AppProps, AppState> {
                         id="leftVideo"
                         onEnded={(e) => this.onVideoEnded(e.currentTarget.src)}
                         playsInline
-                        onClick={this.roomTogglePlay}
+                        onClick={this.handleVideoClick}
                       ></video>
+                    )}
+                    {this.state.fullScreen && this.state.roomMedia && (
+                      <div
+                        className={`${styles.fullscreenControls} ${
+                          this.state.fullscreenControlsVisible
+                            ? ""
+                            : styles.fullscreenControlsHidden
+                        }`}
+                      >
+                        {controls}
+                      </div>
+                    )}
+                    {this.state.fullScreen && this.state.fullscreenChatMessage && (
+                      <div
+                        className={styles.fullscreenMessageToast}
+                        role="status"
+                        aria-live="polite"
+                      >
+                        <span className={styles.fullscreenMessageAuthor}>
+                          {this.state.nameMap[
+                            this.state.fullscreenChatMessage.id
+                          ] || "کاربر"}
+                        </span>
+                        <span className={styles.fullscreenMessageText}>
+                          {this.state.fullscreenChatMessage.msg}
+                        </span>
+                      </div>
                     )}
                     {Boolean(this.state.total) && (
                       <div
@@ -2401,12 +2526,7 @@ export class App extends React.Component<AppProps, AppState> {
                     )}
                   </div>
                 </div>
-                {this.state.roomMedia &&
-                  (this.state.fullScreen ? (
-                    <div className={styles.fullscreenControls}>{controls}</div>
-                  ) : (
-                    controls
-                  ))}
+                {!this.state.fullScreen && this.state.roomMedia && controls}
                 {!isCompactViewport() && (
                   <div className={styles.expandButton}>
                     <ActionIcon

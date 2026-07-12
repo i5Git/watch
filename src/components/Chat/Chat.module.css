@@ -358,3 +358,47 @@
     font-size: 13px;
   }
 }
+
+@media (orientation: landscape) and (pointer: coarse) {
+  .fullscreenPanel .chatContainer {
+    padding: 6px 8px 2px;
+  }
+
+  .fullscreenPanel .messageList {
+    gap: 6px;
+  }
+
+  .fullscreenPanel .comment {
+    padding: 6px 8px;
+  }
+
+  .fullscreenPanel .commentHeader {
+    gap: 6px;
+    font-size: 11px;
+  }
+
+  .fullscreenPanel .messageText {
+    max-width: 94%;
+    margin-top: 3px;
+    padding: 7px 9px;
+    font-size: 12px;
+    line-height: 1.45;
+  }
+
+  .fullscreenPanel .composer {
+    margin: 0 8px max(8px, env(safe-area-inset-bottom));
+    gap: 5px;
+    padding: 6px;
+    border-radius: 12px;
+  }
+
+  .fullscreenPanel .composerInput :global(.mantine-Input-input) {
+    min-height: 32px;
+    font-size: 14px;
+  }
+
+  .fullscreenPanel .sendButton {
+    width: 32px;
+    height: 32px;
+  }
+}
