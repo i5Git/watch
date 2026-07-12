@@ -4,6 +4,41 @@
 
 A website for watching videos together.
 
+## One-command Ubuntu installation
+
+Run this as `root` on a fresh Ubuntu VPS:
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/i5Git/watch/master/install.sh)
+```
+
+The installer:
+
+- Installs Git, Node.js 22 and PM2
+- Downloads the application to `/opt/watchparty`
+- Installs packages and builds the web interface
+- Runs the backend on port `8080`
+- Runs the web interface on port `4173`
+- Configures automatic restart through PM2
+- Opens the required UFW ports when UFW is available
+- Performs health checks after installation
+
+After installation, open:
+
+```text
+http://YOUR_VPS_IP:4173
+```
+
+Useful management commands:
+
+```bash
+pm2 status
+pm2 logs
+pm2 restart watchparty-server watchparty-ui
+```
+
+For a production domain with HTTPS, place ports `4173` and `8080` behind Caddy or Nginx. Selecting HTTPS during installation only builds the frontend with an HTTPS backend address; it does not automatically issue a TLS certificate.
+
 ## Description
 
 - Synchronizes the video being watched with the current room
