@@ -55,6 +55,23 @@ if (process.env.NODE_ENV === "development") {
 
 const releaseInterval = 5 * 60 * 1000;
 const app = express();
+const mediaContentTypes: Record<string, string> = {
+  ".avi": "video/x-msvideo",
+  ".m4v": "video/mp4",
+  ".mkv": "video/x-matroska",
+  ".mov": "video/quicktime",
+  ".mp4": "video/mp4",
+  ".mpeg": "video/mpeg",
+  ".mpg": "video/mpeg",
+  ".ogv": "video/ogg",
+  ".ts": "video/mp2t",
+  ".webm": "video/webm",
+};
+
+const getMediaContentType = (filePath: string) =>
+  mediaContentTypes[path.extname(filePath).toLowerCase()] ||
+  "application/octet-stream";
+
 ensureAuthStore();
 let server = null as https.Server | http.Server | null;
 if (config.SSL_KEY_FILE && config.SSL_CRT_FILE) {
@@ -228,7 +245,18 @@ app.post("/api/media/upload", requireAuth, async (req, res) => {
   }
 });
 
-app.use("/media", express.static(getMediaDirectory(), { acceptRanges: true }));
+app.use(
+  "/media",
+  requireAuth,
+  express.static(getMediaDirectory(), {
+    acceptRanges: true,
+    setHeaders: (response, filePath) => {
+      response.setHeader("Content-Type", getMediaContentType(filePath));
+      response.setHeader("Content-Disposition", "inline");
+      response.setHeader("X-Content-Type-Options", "nosniff");
+    },
+  }),
+);
 
 // Data's already compressed so go before the compression middleware
 app.get("/subtitle/:hash", async (req, res) => {
