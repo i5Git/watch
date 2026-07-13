@@ -66,6 +66,7 @@ const settingsFilename = "media-settings.json";
 const maxUploadBytes =
   Number(config.UPLOAD_MAX_BYTES) || 20 * 1024 * 1024 * 1024;
 const activeJobs = new Map<string, ActiveJob>();
+const auxiliaryProcesses = new Set<ChildProcess>();
 const runningJobs = new Map<string, number>();
 const queuedIds: string[] = [];
 const jobVersions = new Map<string, number>();
@@ -283,7 +284,10 @@ const runConversion = async (id: string) => {
       record.metadata = metadata;
       record.size = metadata.fileSize;
     });
-    void generateThumbnails(inputPath, folder, metadata.duration).then(() => {
+    void generateThumbnails(inputPath, folder, metadata.duration, {
+      onStart: (child) => auxiliaryProcesses.add(child),
+      onFinish: (child) => auxiliaryProcesses.delete(child),
+    }).then(() => {
       if (!isCurrentJob(id, version, generation)) {
         return;
       }
@@ -474,6 +478,20 @@ export const getMedia = (id: string, user: AppUser) => {
   return record && mediaForUser(record, user) ? record : undefined;
 };
 
+export const getMediaPlaybackInfo = (id: string) => {
+  const record = readIndex().find((item) => item.id === id);
+  if (!record) {
+    return undefined;
+  }
+  return {
+    id: record.id,
+    status: record.status,
+    duration: record.metadata?.duration,
+    hlsUrl: record.hlsUrl,
+    progress: record.progress,
+  };
+};
+
 export const uploadMedia = async (
   request: NodeJS.ReadableStream & {
     headers?: Record<string, string | string[] | undefined>;
@@ -658,30 +676,85 @@ export const deleteMedia = (id: string) => {
   return {};
 };
 
-export const clearMediaCache = () => {
+const waitForProcessExit = (child: ChildProcess) =>
+  new Promise<boolean>((resolve) => {
+    if (child.exitCode !== null || child.signalCode !== null) {
+      resolve(true);
+      return;
+    }
+    let settled = false;
+    const finish = (didExit: boolean) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timeout);
+      resolve(didExit);
+    };
+    const timeout = setTimeout(() => finish(false), 10_000);
+    child.once("close", () => finish(true));
+    child.once("error", () => finish(true));
+  });
+
+const getPathStats = (target: string): { files: number; bytes: number } => {
+  try {
+    const stats = fs.statSync(target);
+    if (stats.isFile()) {
+      return { files: 1, bytes: stats.size };
+    }
+    if (!stats.isDirectory()) {
+      return { files: 0, bytes: 0 };
+    }
+    return fs.readdirSync(target).reduce(
+      (total, name) => {
+        const current = getPathStats(path.join(target, name));
+        total.files += current.files;
+        total.bytes += current.bytes;
+        return total;
+      },
+      { files: 0, bytes: 0 },
+    );
+  } catch {
+    return { files: 0, bytes: 0 };
+  }
+};
+
+export const clearMediaCache = async () => {
   mediaCacheGeneration += 1;
   queuedIds.splice(0, queuedIds.length);
   for (const [id, active] of activeJobs) {
     nextJobVersion(id);
     active.child.kill("SIGKILL");
   }
+  for (const child of auxiliaryProcesses) {
+    child.kill("SIGKILL");
+  }
+  const processesStopped = await Promise.all([
+    ...Array.from(activeJobs.values(), ({ child }) =>
+      waitForProcessExit(child),
+    ),
+    ...Array.from(auxiliaryProcesses, waitForProcessExit),
+  ]);
+  if (processesStopped.some((stopped) => !stopped)) {
+    throw new Error(
+      "An active media process could not be stopped. Try clearing media again.",
+    );
+  }
   activeJobs.clear();
+  auxiliaryProcesses.clear();
   runningJobs.clear();
   ensureMediaDirectory();
   let removedFiles = 0;
   let removedBytes = 0;
   for (const entry of fs.readdirSync(mediaDirectory, { withFileTypes: true })) {
-    if (
-      entry.name === settingsFilename ||
-      entry.name === path.basename(indexFile)
-    ) {
+    if (entry.name === settingsFilename) {
       continue;
     }
     const target = path.join(mediaDirectory, entry.name);
-    const stats = fs.statSync(target);
-    removedBytes += stats.isFile() ? stats.size : 0;
+    const stats = getPathStats(target);
+    removedFiles += stats.files;
+    removedBytes += stats.bytes;
     fs.rmSync(target, { recursive: true, force: true });
-    removedFiles += 1;
   }
   writeIndex([]);
   return { removedFiles, removedBytes };

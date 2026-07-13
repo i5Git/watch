@@ -65,8 +65,12 @@ export const Controls = (props: ControlsProps) => {
       ? props.duration
       : Math.max(props.currentTime, 0);
   const getLength = () => getEnd();
-  const getCurrent = () => props.currentTime;
-  const getPercent = () => getCurrent() / getLength();
+  const getCurrent = () =>
+    Number.isFinite(props.currentTime) ? Math.max(props.currentTime, 0) : 0;
+  const clampPercent = (value: number) =>
+    Number.isFinite(value) ? Math.min(100, Math.max(0, value)) : 0;
+  const getPercent = () =>
+    getLength() > 0 ? clampPercent((getCurrent() / getLength()) * 100) : 0;
   const zeroTime = useMemo(
     () => Math.floor(Date.now() / 1000) - props.duration,
     [props.video, Boolean(props.duration)],
@@ -99,8 +103,9 @@ export const Controls = (props: ControlsProps) => {
       : 0;
   const isOutOfSync = Math.abs(syncDelta) > 0.35;
   const buffers = timeRanges.map(({ start, end }) => {
-    const buffStartPct = (start / getLength()) * 100;
-    const buffLengthPct = ((end - start) / getLength()) * 100;
+    const buffStartPct = clampPercent((start / getLength()) * 100);
+    const buffEndPct = clampPercent((end / getLength()) * 100);
+    const buffLengthPct = Math.max(0, buffEndPct - buffStartPct);
     return (
       <div
         key={start}
@@ -157,7 +162,7 @@ export const Controls = (props: ControlsProps) => {
         >
           <Progress.Section
             style={{ pointerEvents: "none", zIndex: 1 }}
-            value={Number.isFinite(getPercent()) ? getPercent() * 100 : 0}
+            value={getPercent()}
           />
           {buffers}
           {getLength() < Infinity && showTimestamp && (
@@ -218,9 +223,17 @@ export const Controls = (props: ControlsProps) => {
                 : "همگام با اتاق"
             }
             aria-label="همگام‌سازی با پخش اتاق"
-            onClick={() =>
-              isLiveStream ? roomSeek(props.duration) : localSeek()
-            }
+            onClick={() => {
+              if (isLiveStream) {
+                roomSeek(props.duration);
+                return;
+              }
+              if (Number.isFinite(leaderTime)) {
+                roomSeek(Math.max(0, Math.round(Number(leaderTime))));
+                return;
+              }
+              localSeek();
+            }}
           >
             <IconRefresh size={19} />
             {isOutOfSync && <span className={styles.syncDot} />}

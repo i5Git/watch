@@ -165,6 +165,7 @@ interface AppState {
   mediaPath: string | undefined;
   roomPlaybackRate: number;
   isLiveStream: boolean;
+  managedMediaDuration: number | undefined;
   settingsModalOpen: boolean;
   uploadController: AbortController | undefined;
 }
@@ -241,6 +242,7 @@ export class App extends React.Component<AppProps, AppState> {
     mediaPath: undefined,
     roomPlaybackRate: 0,
     isLiveStream: false,
+    managedMediaDuration: undefined,
     settingsModalOpen: false,
     uploadController: undefined,
   };
@@ -256,6 +258,7 @@ export class App extends React.Component<AppProps, AppState> {
   heartbeat: number | undefined = undefined;
   fullscreenControlsTimer: number | undefined;
   fullscreenControlsTimerGeneration = 0;
+  managedMediaRequestGeneration = 0;
   isUnmounted = false;
   lastHardSyncAt = 0;
   fullscreenMessageTimer: number | undefined;
@@ -501,8 +504,13 @@ export class App extends React.Component<AppProps, AppState> {
           vBrowserQuality: "1",
           controller: data.controller,
           isLiveStream: false,
+          managedMediaDuration:
+            currentMedia === this.state.roomMedia
+              ? this.state.managedMediaDuration
+              : undefined,
         },
         async () => {
+          void this.loadManagedMediaDuration(currentMedia);
           const leftVideo = this.HTMLInterface.getVideoEl();
 
           // Stop all players
@@ -1749,6 +1757,53 @@ export class App extends React.Component<AppProps, AppState> {
     }
   };
 
+  getManagedMediaId = (source = this.state.roomMedia) => {
+    try {
+      const pathname = new URL(source, window.location.origin).pathname;
+      const match = pathname.match(/^\/media\/([^/]+)\/master\.m3u8$/);
+      return match ? decodeURIComponent(match[1]) : undefined;
+    } catch {
+      return undefined;
+    }
+  };
+
+  loadManagedMediaDuration = async (source: string) => {
+    const requestGeneration = ++this.managedMediaRequestGeneration;
+    const id = this.getManagedMediaId(source);
+    if (!id) {
+      if (source === this.state.roomMedia) {
+        this.setState({ managedMediaDuration: undefined });
+      }
+      return;
+    }
+    try {
+      const response = await fetch(
+        `/api/media-playback/${encodeURIComponent(id)}`,
+        {
+          credentials: "include",
+          cache: "no-store",
+        },
+      );
+      if (!response.ok) {
+        return;
+      }
+      const media = (await response.json()) as {
+        duration?: number;
+      };
+      const duration = Number(media.duration);
+      if (
+        requestGeneration === this.managedMediaRequestGeneration &&
+        source === this.state.roomMedia &&
+        Number.isFinite(duration) &&
+        duration > 0
+      ) {
+        this.setState({ managedMediaDuration: duration });
+      }
+    } catch (error) {
+      console.warn("Unable to load managed media duration:", error);
+    }
+  };
+
   playingScreenShare = () => {
     return isScreenShare(this.state.roomMedia);
   };
@@ -1779,11 +1834,8 @@ export class App extends React.Component<AppProps, AppState> {
     // For live this is the offset from the leading edge (negative)
     if (this.state.isLiveStream) {
       target = this.Player().getDuration() + (customTime ?? 0);
-    } else if (this.isManagedProgressiveHls()) {
-      const duration = this.Player().getDuration();
-      if (Number.isFinite(duration) && duration > 0) {
-        target = Math.min(target, Math.max(0, duration - 0.25));
-      }
+    } else {
+      target = this.normalizeSeekTarget(target);
     }
     if (target >= 0 && target < Infinity) {
       console.log("syncing self to leader or custom:", target);
@@ -1870,11 +1922,23 @@ export class App extends React.Component<AppProps, AppState> {
   };
 
   roomSeek = (time: number) => {
-    let target = time;
-    target = Math.max(target, 0);
+    const target = this.state.isLiveStream
+      ? Math.max(time, 0)
+      : this.normalizeSeekTarget(time);
     this.Player().seekVideo(target);
     const toSend = this.getRoomTSToSet(target);
     this.socket.emit("CMD:seek", toSend);
+  };
+
+  normalizeSeekTarget = (time: number) => {
+    let target = Number.isFinite(time) ? Math.max(time, 0) : 0;
+    if (this.isManagedProgressiveHls()) {
+      const availableDuration = this.Player().getDuration();
+      if (Number.isFinite(availableDuration) && availableDuration > 0) {
+        target = Math.min(target, Math.max(0, availableDuration - 0.25));
+      }
+    }
+    return target;
   };
 
   getRoomTSToSet = (time: number) => {
@@ -1940,7 +2004,13 @@ export class App extends React.Component<AppProps, AppState> {
   };
 
   handleVideoInteraction = () => {
-    if (this.state.fullScreen) {
+    if (!this.state.fullScreen) {
+      return;
+    }
+    if (this.state.fullscreenControlsVisible) {
+      this.clearFullscreenControlsTimer();
+      this.setState({ fullscreenControlsVisible: false });
+    } else {
       this.showFullscreenControls();
     }
   };
@@ -2320,7 +2390,9 @@ export class App extends React.Component<AppProps, AppState> {
         volume={this.Player().getVolume()}
         subtitled={this.Player().isSubtitled()}
         currentTime={this.Player().getCurrentTime()}
-        duration={this.Player().getDuration()}
+        duration={
+          this.state.managedMediaDuration ?? this.Player().getDuration()
+        }
         disabled={!this.haveLock()}
         leaderTime={this.hasDuration() ? this.getLeaderTime() : undefined}
         isPauseDisabled={this.isPauseDisabled()}
@@ -2720,8 +2792,7 @@ export class App extends React.Component<AppProps, AppState> {
                     {this.state.fullScreen && this.state.roomMedia && (
                       <div
                         className={styles.fullscreenTapSurface}
-                        onClick={this.handleVideoInteraction}
-                        onTouchEnd={this.handleVideoInteraction}
+                        onPointerUp={this.handleVideoInteraction}
                         aria-hidden="true"
                       />
                     )}
@@ -2906,9 +2977,15 @@ export class App extends React.Component<AppProps, AppState> {
             {this.state.fullScreen && (
               <>
                 <ActionIcon
-                  className={styles.fullscreenExitButton}
+                  className={`${styles.fullscreenExitButton} ${
+                    this.state.fullscreenControlsVisible
+                      ? ""
+                      : styles.fullscreenChromeHidden
+                  }`}
                   variant="filled"
                   size="lg"
+                  aria-hidden={!this.state.fullscreenControlsVisible}
+                  tabIndex={this.state.fullscreenControlsVisible ? 0 : -1}
                   aria-label="خروج از تمام صفحه"
                   title="خروج از تمام صفحه"
                   onClick={() => this.localFullScreen(true)}

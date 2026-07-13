@@ -111,6 +111,8 @@ const runThumbnail = (
   inputPath: string,
   outputPath: string,
   timestamp: number,
+  onProcessStart?: (child: ChildProcess) => void,
+  onProcessFinish?: (child: ChildProcess) => void,
 ) =>
   new Promise<void>((resolve) => {
     const child = spawn(
@@ -134,14 +136,28 @@ const runThumbnail = (
       ],
       { stdio: "ignore" },
     );
-    child.on("error", () => resolve());
-    child.on("close", () => resolve());
+    onProcessStart?.(child);
+    let settled = false;
+    const finish = () => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      onProcessFinish?.(child);
+      resolve();
+    };
+    child.on("error", finish);
+    child.on("close", finish);
   });
 
 export const generateThumbnails = async (
   inputPath: string,
   outputDirectory: string,
   duration: number,
+  processObserver?: {
+    onStart?: (child: ChildProcess) => void;
+    onFinish?: (child: ChildProcess) => void;
+  },
 ) => {
   const posterTime = Math.min(2, Math.max(0, duration * 0.05));
   const previewTime = Math.min(30, Math.max(0, duration * 0.2));
@@ -150,11 +166,15 @@ export const generateThumbnails = async (
       inputPath,
       path.join(outputDirectory, "poster.jpg"),
       posterTime,
+      processObserver?.onStart,
+      processObserver?.onFinish,
     ),
     runThumbnail(
       inputPath,
       path.join(outputDirectory, "thumbnail.jpg"),
       previewTime,
+      processObserver?.onStart,
+      processObserver?.onFinish,
     ),
   ]);
 };

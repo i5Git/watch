@@ -51,6 +51,8 @@
 
 .timeline {
   position: relative;
+  width: 0 !important;
+  max-width: 100%;
   flex: 1 1 auto;
   min-width: 56px;
   height: 5px;

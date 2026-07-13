@@ -36,6 +36,7 @@ import {
 } from "./auth.ts";
 import {
   getMedia,
+  getMediaPlaybackInfo,
   getMediaDirectory,
   listMedia,
   clearMediaCache,
@@ -238,9 +239,9 @@ app.patch("/api/admin/site-settings", requireAdmin, (req, res) => {
   }
 });
 
-app.delete("/api/admin/media-cache", requireAdmin, (_req, res) => {
+app.delete("/api/admin/media-cache", requireAdmin, async (_req, res) => {
   try {
-    res.json(clearMediaCache());
+    res.json(await clearMediaCache());
   } catch (error: any) {
     res.status(500).json({ error: error?.message || "Unable to clear media." });
   }
@@ -355,6 +356,15 @@ app.delete("/api/admin/users/:username", requireAdmin, (req, res) => {
 
 app.get("/api/media", requireAuth, (req, res) => {
   res.json(listMedia(req.appUser!));
+});
+
+app.get("/api/media-playback/:id", requireAuth, (req, res) => {
+  const record = getMediaPlaybackInfo(req.params.id);
+  if (!record) {
+    res.status(404).json({ error: "media not found" });
+    return;
+  }
+  res.json(record);
 });
 
 app.get("/api/media/:id", requireAuth, (req, res) => {
