@@ -17,7 +17,7 @@ COPY . /usr/src
 
 WORKDIR /usr/src
 
-# FFmpeg powers the optional MKV/AVI/MOV to MP4 conversion flow.
+# FFmpeg and FFprobe power the background HLS transcoding pipeline.
 RUN apk add --no-cache ffmpeg
 
 # NODE_ENV=production is needed at runtime, but Vite and TypeScript are

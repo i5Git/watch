@@ -9,8 +9,11 @@ This is a standalone redesign based on the open-source WatchParty project. The u
 - Local username/password access gate with no public signup.
 - Admin panel for creating users, resetting passwords, disabling users, and deleting users.
 - Synchronized rooms with direct MP4/HLS playback, playlists, chat, subtitles, and invite links.
-- Upload a video to the VPS and play it from the room.
-- Optional server-side FFmpeg conversion to browser-friendly MP4 (H.264 video + AAC audio) for iPhone Safari.
+- Upload a video to the VPS without waiting for conversion.
+- Persistent background MKV/video to HLS queue with progressive playback after the first 30 seconds are available.
+- H.264/yuv420p video, automatic AAC handling, six-second segments, posters, preview thumbnails, metadata, progress, speed, and ETA.
+- Admin-configurable encoder preset, CRF, segment length, audio mode, original-file retention, and worker count.
+- Admin controls to retry, cancel, rebuild, or remove individual media outputs.
 - Persian-first RTL layout across navigation, forms, menus, chat, room settings, and admin tools.
 - Compact mobile chat below the player and translucent fullscreen chat over the media.
 - No subscription, billing, OAuth, profile-picture, GitHub-credit, or Discord-credit product surfaces.
@@ -97,11 +100,16 @@ The important server values are:
 - `MEDIA_DATA_DIR`: uploaded media directory. Default: `data/media`.
 - `UPLOAD_MAX_BYTES`: upload limit in bytes.
 - `FFMPEG_PATH`: FFmpeg executable. Docker uses the image-installed `ffmpeg`.
+- `FFPROBE_PATH`: FFprobe executable used for codec and duration metadata.
 - `DATABASE_URL`, `REDIS_URL`, `YOUTUBE_API_KEY`, and TURN settings are optional.
 
 Do not commit `.env`, database URLs, Redis URLs, TURN credentials, or other secrets. Keep the Docker Compose `./data:/usr/src/data` volume so users and uploaded media survive updates.
 
-For direct browser playback, MP4 with H.264/AAC or HLS is the safest choice. MKV and other containers can be uploaded and converted through the room upload dialog.
+Each new upload is stored under `data/media/<movie-id>/`. The original file is preserved by default, while `master.m3u8`, numbered transport-stream segments, `poster.jpg`, `thumbnail.jpg`, and `metadata.json` are generated in the same folder. The queue survives restarts: interrupted jobs return to the queued state when Watch starts again.
+
+The HLS playlist is published progressively. Once at least 30 seconds of segments exist, the room switches to the HLS source automatically and FFmpeg continues appending segments until the final playlist is complete. Media settings and per-movie recovery controls are available in the administrator panel.
+
+For direct browser playback, MP4 with H.264/AAC or HLS is the safest choice. MKV and other containers are automatically converted through the room upload dialog.
 
 ## License
 

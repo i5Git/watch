@@ -19,6 +19,7 @@ const defaults = {
   MEDIA_DATA_DIR: "data/media",
   UPLOAD_MAX_BYTES: 21474836480,
   FFMPEG_PATH: "ffmpeg",
+  FFPROBE_PATH: "ffprobe",
   VBROWSER_SESSION_SECONDS: 10800, // Number of seconds to allow vbrowsers to run for
   VBROWSER_SESSION_SECONDS_LARGE: 86400, // Number of seconds to allow large vbrowsers to run for
   VM_POOL_RAMP_DOWN_HOURS: "", // Comma separated start/end UTC hours of the ramp down period

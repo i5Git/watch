@@ -283,6 +283,8 @@ write_env() {
     write_env_value "ADMIN_PASSWORD" "${ADMIN_PASSWORD}"
     write_env_value "AUTH_DATA_DIR" "data"
     write_env_value "MEDIA_DATA_DIR" "data/media"
+    write_env_value "FFMPEG_PATH" "ffmpeg"
+    write_env_value "FFPROBE_PATH" "ffprobe"
     write_env_value "YOUTUBE_API_KEY" "${YOUTUBE_API_KEY}"
     write_env_value "DATABASE_URL" "${DATABASE_URL}"
     write_env_value "REDIS_URL" "${REDIS_URL}"

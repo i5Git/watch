@@ -1,24 +1,14 @@
 import React, { useState } from "react";
-import {
-  Alert,
-  Button,
-  Checkbox,
-  FileInput,
-  Modal,
-  Progress,
-  Text,
-} from "@mantine/core";
-import {
-  IconCircleCheck,
-  IconDeviceMobile,
-  IconUpload,
-} from "@tabler/icons-react";
+import { Alert, Button, FileInput, Modal, Progress, Text } from "@mantine/core";
+import { IconCircleCheck, IconUpload } from "@tabler/icons-react";
 
 export interface UploadedMedia {
   id: string;
   name: string;
   url: string;
-  status: "ready" | "converting" | "error";
+  status:
+    "uploading" | "queued" | "converting" | "playable" | "ready" | "failed";
+  error?: string;
 }
 
 export const FileShareModal = (props: {
@@ -30,7 +20,6 @@ export const FileShareModal = (props: {
   ) => Promise<UploadedMedia>;
 }) => {
   const [file, setFile] = useState<File | null>(null);
-  const [convertToMp4, setConvertToMp4] = useState(true);
   const [progress, setProgress] = useState(0);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
@@ -42,7 +31,7 @@ export const FileShareModal = (props: {
     setError("");
     setUploading(true);
     try {
-      await props.uploadMedia(file, convertToMp4, setProgress);
+      await props.uploadMedia(file, true, setProgress);
       setProgress(100);
       window.setTimeout(props.closeModal, 450);
     } catch (uploadError: any) {
@@ -61,7 +50,8 @@ export const FileShareModal = (props: {
       dir="rtl"
     >
       <Text c="dimmed" size="sm" lh={1.8}>
-        فایل روی VPS ذخیره می‌شود و بعد از آماده شدن، برای همه افراد اتاق پخش خواهد شد.
+        فایل روی VPS ذخیره می‌شود و بعد از آماده شدن، برای همه افراد اتاق پخش
+        خواهد شد.
       </Text>
       <FileInput
         mt="lg"
@@ -73,26 +63,15 @@ export const FileShareModal = (props: {
         clearable
         disabled={uploading}
       />
-      <Checkbox
-        mt="md"
-        checked={convertToMp4}
-        onChange={(event) => setConvertToMp4(event.currentTarget.checked)}
-        disabled={uploading}
-        label={
-          <span>
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-              <IconDeviceMobile size={16} />
-              تبدیل به MP4 برای آیفون
-            </span>
-          </span>
-        }
-        description="برای پخش پایدارتر در Safari، ویدیو به H.264 و AAC تبدیل می‌شود."
-      />
+      <Alert mt="md" color="blue" variant="light">
+        پس از پایان آپلود، تبدیل HLS در پس‌زمینه شروع می‌شود. به‌محض آماده شدن
+        بخش ابتدایی فیلم، پخش در اتاق به‌صورت خودکار آغاز خواهد شد.
+      </Alert>
       {uploading && (
         <div style={{ marginTop: 20 }}>
           <Progress value={progress} animated />
           <Text mt={6} size="xs" c="dimmed">
-            {convertToMp4 ? "آپلود و تبدیل در حال انجام است…" : "آپلود در حال انجام است…"}
+            فایل در حال آپلود است…
           </Text>
         </div>
       )}
@@ -103,7 +82,7 @@ export const FileShareModal = (props: {
       )}
       {!uploading && progress === 100 && (
         <Alert mt="md" color="teal" icon={<IconCircleCheck size={18} />}>
-          ویدیو آماده پخش است.
+          آپلود تمام شد؛ تبدیل در پس‌زمینه ادامه دارد.
         </Alert>
       )}
       <Button

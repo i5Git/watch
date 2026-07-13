@@ -252,6 +252,7 @@ export class App extends React.Component<AppProps, AppState> {
   heartbeat: number | undefined = undefined;
   fullscreenControlsTimer: number | undefined;
   fullscreenControlsTimerGeneration = 0;
+  isUnmounted = false;
   fullscreenMessageTimer: number | undefined;
   fullscreenChatDrag:
     | {
@@ -293,6 +294,7 @@ export class App extends React.Component<AppProps, AppState> {
   chatRef = React.createRef<Chat>();
 
   async componentDidMount() {
+    this.isUnmounted = false;
     document.addEventListener("fullscreenchange", this.onFullScreenChange);
     document.addEventListener("keydown", this.onKeydown);
     window.addEventListener("resize", this.syncVisualViewport);
@@ -317,6 +319,7 @@ export class App extends React.Component<AppProps, AppState> {
   }
 
   componentWillUnmount() {
+    this.isUnmounted = true;
     document.removeEventListener("fullscreenchange", this.onFullScreenChange);
     document.removeEventListener("keydown", this.onKeydown);
     window.removeEventListener("resize", this.syncVisualViewport);
@@ -1045,7 +1048,8 @@ export class App extends React.Component<AppProps, AppState> {
 
   startConvert = async (_sourceUrl?: string) => {
     this.setState({
-      errorMessage: "برای تبدیل، فایل را از گزینه «آپلود ویدیو» روی VPS ارسال کنید.",
+      errorMessage:
+        "برای تبدیل، فایل را از گزینه «آپلود ویدیو» روی VPS ارسال کنید.",
     });
   };
 
@@ -1080,35 +1084,55 @@ export class App extends React.Component<AppProps, AppState> {
           reject(new Error(data.error || "آپلود انجام نشد."));
           return;
         }
-        try {
-          let latest = data;
-          onProgress(100);
-          if (latest.status === "converting") {
-            for (let attempt = 0; attempt < 600; attempt += 1) {
-              await new Promise((resolveWait) => setTimeout(resolveWait, 1500));
-              const response = await fetch(`/api/media/${latest.id}`, {
-                credentials: "include",
-              });
-              latest = await response.json();
-              if (latest.status === "ready") {
-                break;
-              }
-              if (latest.status === "error") {
-                throw new Error(latest.error || "تبدیل ویدیو انجام نشد.");
-              }
-            }
-          }
-          if (latest.status !== "ready") {
-            throw new Error("تبدیل ویدیو بیشتر از زمان مجاز طول کشید.");
-          }
-          this.roomSetMedia(latest.url);
-          resolve(latest);
-        } catch (error) {
-          reject(error);
-        }
+        onProgress(100);
+        resolve(data);
+        void this.waitForPlayableMedia(data.id);
       };
       request.send(file);
     });
+
+  waitForPlayableMedia = async (id: string) => {
+    for (let attempt = 0; attempt < 57_600; attempt += 1) {
+      await new Promise((resolveWait) => setTimeout(resolveWait, 1500));
+      if (this.isUnmounted) {
+        return;
+      }
+      try {
+        const response = await fetch(`/api/media/${encodeURIComponent(id)}`, {
+          credentials: "include",
+          cache: "no-store",
+        });
+        if (!response.ok) {
+          throw new Error("وضعیت ویدیو دریافت نشد.");
+        }
+        const media = (await response.json()) as UploadedMedia;
+        if (
+          (media.status === "playable" || media.status === "ready") &&
+          media.url
+        ) {
+          this.roomSetMedia(media.url);
+          return;
+        }
+        if (media.status === "failed") {
+          this.setState({
+            errorMessage: media.error || "تبدیل ویدیو انجام نشد.",
+          });
+          return;
+        }
+      } catch (error: any) {
+        if (attempt > 10) {
+          this.setState({
+            errorMessage:
+              error?.message || "پیگیری وضعیت تبدیل ویدیو انجام نشد.",
+          });
+          return;
+        }
+      }
+    }
+    this.setState({
+      errorMessage: "تبدیل ویدیو بیشتر از زمان مجاز طول کشید.",
+    });
+  };
 
   startFileShare = async (useMediaSoup: boolean) => {
     const files = await openFileSelector();
@@ -1944,9 +1968,7 @@ export class App extends React.Component<AppProps, AppState> {
     }
   };
 
-  handleChatPanelPointerDown = (
-    event: React.PointerEvent<HTMLDivElement>,
-  ) => {
+  handleChatPanelPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
     const panel = event.currentTarget.closest(
@@ -1971,9 +1993,7 @@ export class App extends React.Component<AppProps, AppState> {
     };
   };
 
-  handleChatPanelPointerMove = (
-    event: React.PointerEvent<HTMLDivElement>,
-  ) => {
+  handleChatPanelPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
     const drag = this.fullscreenChatPanelDrag;
     if (!drag || drag.pointerId !== event.pointerId) {
       return;
@@ -1988,9 +2008,7 @@ export class App extends React.Component<AppProps, AppState> {
     });
   };
 
-  handleChatPanelPointerUp = (
-    event: React.PointerEvent<HTMLDivElement>,
-  ) => {
+  handleChatPanelPointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
     if (this.fullscreenChatPanelDrag?.pointerId === event.pointerId) {
       event.currentTarget.releasePointerCapture(event.pointerId);
       this.fullscreenChatPanelDrag = undefined;
@@ -2489,9 +2507,7 @@ export class App extends React.Component<AppProps, AppState> {
                           }}
                         >
                           {playlist.length === 0 && (
-                            <Menu.Item disabled>
-                              فهرست پخش خالی است.
-                            </Menu.Item>
+                            <Menu.Item disabled>فهرست پخش خالی است.</Menu.Item>
                           )}
                           {playlist.map(
                             (item: PlaylistVideo, index: number) => {
@@ -2566,10 +2582,7 @@ export class App extends React.Component<AppProps, AppState> {
                             </div>
                           )}
                           {!this.state.loading && !this.state.roomMedia && (
-                            <Alert
-                              color="yellow"
-                              title={t("nothingPlaying")}
-                            >
+                            <Alert color="yellow" title={t("nothingPlaying")}>
                               {t("chooseSomething")}
                             </Alert>
                           )}
@@ -2577,9 +2590,10 @@ export class App extends React.Component<AppProps, AppState> {
                             this.state.nonPlayableMedia && (
                               <Alert
                                 color="red"
-                              title="این فایل رسانه‌ای قابل پخش نیست."
+                                title="این فایل رسانه‌ای قابل پخش نیست."
                               >
-                                اگر می‌خواهید یک وب‌سایت را باز کنید، مرورگر مجازی را امتحان کنید.
+                                اگر می‌خواهید یک وب‌سایت را باز کنید، مرورگر
+                                مجازی را امتحان کنید.
                               </Alert>
                             )}
                         </div>
@@ -2652,22 +2666,23 @@ export class App extends React.Component<AppProps, AppState> {
                         {controls}
                       </div>
                     )}
-                    {this.state.fullScreen && this.state.fullscreenChatMessage && (
-                      <div
-                        className={styles.fullscreenMessageToast}
-                        role="status"
-                        aria-live="polite"
-                      >
-                        <span className={styles.fullscreenMessageAuthor}>
-                          {this.state.nameMap[
-                            this.state.fullscreenChatMessage.id
-                          ] || "کاربر"}
-                        </span>
-                        <span className={styles.fullscreenMessageText}>
-                          {this.state.fullscreenChatMessage.msg}
-                        </span>
-                      </div>
-                    )}
+                    {this.state.fullScreen &&
+                      this.state.fullscreenChatMessage && (
+                        <div
+                          className={styles.fullscreenMessageToast}
+                          role="status"
+                          aria-live="polite"
+                        >
+                          <span className={styles.fullscreenMessageAuthor}>
+                            {this.state.nameMap[
+                              this.state.fullscreenChatMessage.id
+                            ] || "کاربر"}
+                          </span>
+                          <span className={styles.fullscreenMessageText}>
+                            {this.state.fullscreenChatMessage.msg}
+                          </span>
+                        </div>
+                      )}
                     {Boolean(this.state.total) && (
                       <div
                         style={{
@@ -2740,19 +2755,19 @@ export class App extends React.Component<AppProps, AppState> {
                 }}
                 className={`${styles.fullHeightColumn} ${styles.rightColumn} ${styles.chatColumn}`}
               >
-              <div className={styles.roomActions}>
-                <Button
-                  color="grey"
-                  title="Settings"
-                  fullWidth
-                  onClick={() => {
-                    this.setSettingsModalOpen(true);
-                  }}
-                  leftSection={<IconSettings />}
-                >
-                  {t("settings")}
-                </Button>
-              </div>
+                <div className={styles.roomActions}>
+                  <Button
+                    color="grey"
+                    title="Settings"
+                    fullWidth
+                    onClick={() => {
+                      this.setSettingsModalOpen(true);
+                    }}
+                    leftSection={<IconSettings />}
+                  >
+                    {t("settings")}
+                  </Button>
+                </div>
                 <Chat
                   chat={this.state.chat}
                   nameMap={this.state.nameMap}

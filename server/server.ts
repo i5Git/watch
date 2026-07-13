@@ -39,9 +39,18 @@ import {
   getMediaDirectory,
   listMedia,
   clearMediaCache,
+  cancelMediaConversion,
+  deleteMedia,
+  deleteMediaHls,
+  deleteMediaOriginal,
+  initializeMediaQueue,
+  notifyMediaSettingsChanged,
+  rebuildMediaHls,
+  retryMediaConversion,
   uploadMedia,
 } from "./media.ts";
 import { getSiteSettings, updateSiteSettings } from "./siteSettings.ts";
+import { getMediaSettings, updateMediaSettings } from "./mediaSettings.ts";
 
 if (process.env.NODE_ENV === "development") {
   axios.interceptors.request.use(
@@ -61,6 +70,7 @@ const mediaContentTypes: Record<string, string> = {
   ".avi": "video/x-msvideo",
   ".m4v": "video/mp4",
   ".mkv": "video/x-matroska",
+  ".m3u8": "application/vnd.apple.mpegurl",
   ".mov": "video/quicktime",
   ".mp4": "video/mp4",
   ".mpeg": "video/mpeg",
@@ -68,6 +78,9 @@ const mediaContentTypes: Record<string, string> = {
   ".ogv": "video/ogg",
   ".ts": "video/mp2t",
   ".webm": "video/webm",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".png": "image/png",
 };
 
 const getMediaContentType = (filePath: string) =>
@@ -75,6 +88,7 @@ const getMediaContentType = (filePath: string) =>
   "application/octet-stream";
 
 ensureAuthStore();
+initializeMediaQueue();
 let server = null as https.Server | http.Server | null;
 if (config.SSL_KEY_FILE && config.SSL_CRT_FILE) {
   const key = fs.readFileSync(config.SSL_KEY_FILE);
@@ -218,7 +232,9 @@ app.patch("/api/admin/site-settings", requireAdmin, (req, res) => {
       }),
     );
   } catch (error: any) {
-    res.status(400).json({ error: error?.message || "Unable to save settings." });
+    res
+      .status(400)
+      .json({ error: error?.message || "Unable to save settings." });
   }
 });
 
@@ -230,15 +246,91 @@ app.delete("/api/admin/media-cache", requireAdmin, (_req, res) => {
   }
 });
 
+app.get("/api/admin/media-settings", requireAdmin, (_req, res) => {
+  res.json(getMediaSettings());
+});
+
+app.patch("/api/admin/media-settings", requireAdmin, (req, res) => {
+  try {
+    const settings = updateMediaSettings(req.body || {});
+    notifyMediaSettingsChanged();
+    res.json(settings);
+  } catch (error: any) {
+    res.status(400).json({
+      error: error?.message || "Unable to save media settings.",
+    });
+  }
+});
+
+app.post("/api/admin/media/:id/retry", requireAdmin, (req, res) => {
+  try {
+    res.json(retryMediaConversion(req.params.id));
+  } catch (error: any) {
+    res.status(400).json({ error: error?.message || "Unable to retry media." });
+  }
+});
+
+app.post("/api/admin/media/:id/cancel", requireAdmin, (req, res) => {
+  try {
+    res.json(cancelMediaConversion(req.params.id));
+  } catch (error: any) {
+    res
+      .status(400)
+      .json({ error: error?.message || "Unable to cancel media." });
+  }
+});
+
+app.post("/api/admin/media/:id/rebuild", requireAdmin, (req, res) => {
+  try {
+    res.json(rebuildMediaHls(req.params.id));
+  } catch (error: any) {
+    res.status(400).json({ error: error?.message || "Unable to rebuild HLS." });
+  }
+});
+
+app.delete("/api/admin/media/:id/hls", requireAdmin, (req, res) => {
+  try {
+    res.json(deleteMediaHls(req.params.id));
+  } catch (error: any) {
+    res.status(400).json({ error: error?.message || "Unable to delete HLS." });
+  }
+});
+
+app.delete("/api/admin/media/:id/original", requireAdmin, (req, res) => {
+  try {
+    res.json(deleteMediaOriginal(req.params.id));
+  } catch (error: any) {
+    res.status(400).json({
+      error: error?.message || "Unable to delete the original media.",
+    });
+  }
+});
+
+app.delete("/api/admin/media/:id", requireAdmin, (req, res) => {
+  try {
+    res.json(deleteMedia(req.params.id));
+  } catch (error: any) {
+    res
+      .status(400)
+      .json({ error: error?.message || "Unable to delete media." });
+  }
+});
+
 app.get("/api/admin/users", requireAdmin, (_req, res) => {
   res.json(listManagedUsers());
 });
 
 app.post("/api/admin/users", requireAdmin, (req, res) => {
   try {
-    res.status(201).json(
-      createManagedUser(req.body?.username, req.body?.password, req.body?.role),
-    );
+    res
+      .status(201)
+      .json(
+        createManagedUser(
+          req.body?.username,
+          req.body?.password,
+          req.body?.role,
+        ),
+      );
   } catch (error: any) {
     res.status(400).json({ error: error?.message || "Unable to create user." });
   }
@@ -289,7 +381,7 @@ app.post("/api/media/upload", requireAuth, async (req, res) => {
     }
     req.setTimeout(0);
     const record = await uploadMedia(req, req.appUser!, filename, convertToMp4);
-    res.status(convertToMp4 ? 202 : 201).json(record);
+    res.status(202).json(record);
   } catch (error: any) {
     res.status(400).json({
       error: error?.message || "The server could not save this upload.",
@@ -306,6 +398,17 @@ app.use(
       response.setHeader("Content-Type", getMediaContentType(filePath));
       response.setHeader("Content-Disposition", "inline");
       response.setHeader("X-Content-Type-Options", "nosniff");
+      if (path.extname(filePath).toLowerCase() === ".m3u8") {
+        response.setHeader(
+          "Cache-Control",
+          "no-cache, no-store, must-revalidate",
+        );
+      } else if (path.extname(filePath).toLowerCase() === ".ts") {
+        response.setHeader(
+          "Cache-Control",
+          "public, max-age=31536000, immutable",
+        );
+      }
     },
   }),
 );
