@@ -34,7 +34,11 @@ import { Controls } from "../Controls/Controls";
 import { SettingsModal } from "../Settings/SettingsModal";
 import { ErrorModal } from "../Modal/ErrorModal";
 import { PasswordModal } from "../Modal/PasswordModal";
-import { FileShareModal, type UploadedMedia } from "../Modal/FileShareModal";
+import {
+  FileShareModal,
+  type UploadedMedia,
+  type UploadOptions,
+} from "../Modal/FileShareModal";
 import { SubtitleModal } from "../Modal/SubtitleModal";
 import { HTML } from "./HTML";
 import { YouTube } from "./YouTube";
@@ -253,6 +257,7 @@ export class App extends React.Component<AppProps, AppState> {
   fullscreenControlsTimer: number | undefined;
   fullscreenControlsTimerGeneration = 0;
   isUnmounted = false;
+  lastHardSyncAt = 0;
   fullscreenMessageTimer: number | undefined;
   fullscreenChatDrag:
     | {
@@ -638,7 +643,8 @@ export class App extends React.Component<AppProps, AppState> {
               const Hls = (await import("hls.js")).default;
               window.watchparty.hls = new Hls();
               window.watchparty.hls.on(Hls.Events.LEVEL_LOADED, (_, data) => {
-                const isLiveStream = data.details.live;
+                const isLiveStream =
+                  data.details.live && !this.isManagedProgressiveHls();
                 this.setState({ isLiveStream });
                 console.log("HLS level loaded: isLive %s", isLiveStream);
               });
@@ -794,28 +800,41 @@ export class App extends React.Component<AppProps, AppState> {
     });
     socket.on("REC:tsMap", (data: NumberDict) => {
       this.setState({ tsMap: data }, () => {
-        // Dynamic playback rate based on timestamps
-        // Disable for sharing types where the users can have different timestamps
-        // e.g. screenshare, fileshare, .m3u8 HLS streams
-        // Also not necessary for WebRTC sharing since it should be close to realtime
+        const localTime = Number(data[clientId]);
+        const leader = this.getLeaderTime();
+        const delta = leader - localTime;
         if (
-          !this.state.roomPaused &&
           !this.state.isLiveStream &&
           this.hasDuration() &&
-          this.state.roomPlaybackRate === 0
+          Number.isFinite(localTime) &&
+          Number.isFinite(leader)
         ) {
-          const leader = this.getLeaderTime();
-          const delta = leader - data[clientId];
-          // Set leader pbr to 1
-          let pbr = 1;
-          // Add .01 pbr for each 100ms delay
-          if (delta > 0.5) {
-            pbr += Number((delta / 10).toFixed(2));
-            pbr = Math.min(pbr, 1.1);
-          }
-          // console.log(delta, pbr);
-          if (this.Player().getPlaybackRate() !== pbr) {
-            this.Player().setPlaybackRate(pbr);
+          const now = Date.now();
+          if (Math.abs(delta) > 2.5 && now - this.lastHardSyncAt > 4000) {
+            this.lastHardSyncAt = now;
+            this.localSeek(leader);
+            if (this.state.roomPlaybackRate === 0) {
+              this.Player().setPlaybackRate(1);
+            }
+          } else if (this.state.roomPaused && Math.abs(delta) > 0.3) {
+            this.localSeek(leader);
+            if (this.state.roomPlaybackRate === 0) {
+              this.Player().setPlaybackRate(1);
+            }
+          } else if (
+            !this.state.roomPaused &&
+            this.state.roomPlaybackRate === 0
+          ) {
+            let playbackRate = 1;
+            if (delta > 0.18) {
+              playbackRate = 1 + Math.min(0.06, delta * 0.02);
+            } else if (delta < -0.18) {
+              playbackRate = 1 - Math.min(0.06, Math.abs(delta) * 0.02);
+            }
+            playbackRate = Number(playbackRate.toFixed(2));
+            if (this.Player().getPlaybackRate() !== playbackRate) {
+              this.Player().setPlaybackRate(playbackRate);
+            }
           }
         }
         if (this.state.roomSubtitle) {
@@ -1055,8 +1074,9 @@ export class App extends React.Component<AppProps, AppState> {
 
   uploadMedia = (
     file: File,
-    convertToMp4: boolean,
-    onProgress: (progress: number) => void,
+    options: UploadOptions,
+    onUploadProgress: (progress: number) => void,
+    onMediaStatus: (media: UploadedMedia) => void,
   ): Promise<UploadedMedia> =>
     new Promise((resolve, reject) => {
       const request = new XMLHttpRequest();
@@ -1064,10 +1084,12 @@ export class App extends React.Component<AppProps, AppState> {
       request.withCredentials = true;
       request.setRequestHeader("Content-Type", "application/octet-stream");
       request.setRequestHeader("X-File-Name", encodeURIComponent(file.name));
-      request.setRequestHeader("X-Convert-Mp4", String(convertToMp4));
+      request.setRequestHeader("X-Convert-Mp4", "true");
+      request.setRequestHeader("X-Transcode-Preset", options.preset);
+      request.setRequestHeader("X-Play-When", options.playWhen);
       request.upload.onprogress = (event) => {
         if (event.lengthComputable) {
-          onProgress(Math.round((event.loaded / event.total) * 100));
+          onUploadProgress(Math.round((event.loaded / event.total) * 100));
         }
       };
       request.onerror = () => reject(new Error("ارتباط با سرور قطع شد."));
@@ -1084,18 +1106,41 @@ export class App extends React.Component<AppProps, AppState> {
           reject(new Error(data.error || "آپلود انجام نشد."));
           return;
         }
-        onProgress(100);
-        resolve(data);
-        void this.waitForPlayableMedia(data.id);
+        onUploadProgress(100);
+        onMediaStatus(data);
+        if (options.playWhen === "playable") {
+          resolve(data);
+          void this.waitForMediaTarget(data.id, "playable").catch(
+            (error: any) => {
+              if (!this.isUnmounted) {
+                this.setState({
+                  errorMessage: error?.message || "تبدیل ویدیو انجام نشد.",
+                });
+              }
+            },
+          );
+          return;
+        }
+        try {
+          resolve(
+            await this.waitForMediaTarget(data.id, "ready", onMediaStatus),
+          );
+        } catch (error) {
+          reject(error);
+        }
       };
       request.send(file);
     });
 
-  waitForPlayableMedia = async (id: string) => {
+  waitForMediaTarget = async (
+    id: string,
+    target: "playable" | "ready",
+    onMediaStatus?: (media: UploadedMedia) => void,
+  ): Promise<UploadedMedia> => {
     for (let attempt = 0; attempt < 57_600; attempt += 1) {
       await new Promise((resolveWait) => setTimeout(resolveWait, 1500));
       if (this.isUnmounted) {
-        return;
+        throw new Error("پیگیری تبدیل متوقف شد.");
       }
       try {
         const response = await fetch(`/api/media/${encodeURIComponent(id)}`, {
@@ -1106,32 +1151,35 @@ export class App extends React.Component<AppProps, AppState> {
           throw new Error("وضعیت ویدیو دریافت نشد.");
         }
         const media = (await response.json()) as UploadedMedia;
+        onMediaStatus?.(media);
         if (
-          (media.status === "playable" || media.status === "ready") &&
+          ((target === "playable" &&
+            (media.status === "playable" || media.status === "ready")) ||
+            (target === "ready" && media.status === "ready")) &&
           media.url
         ) {
           this.roomSetMedia(media.url);
-          return;
+          return media;
         }
         if (media.status === "failed") {
-          this.setState({
-            errorMessage: media.error || "تبدیل ویدیو انجام نشد.",
-          });
-          return;
+          const conversionError = new Error(
+            media.error || "تبدیل ویدیو انجام نشد.",
+          ) as Error & { fatal?: boolean };
+          conversionError.fatal = true;
+          throw conversionError;
         }
       } catch (error: any) {
+        if (error?.fatal) {
+          throw error;
+        }
         if (attempt > 10) {
-          this.setState({
-            errorMessage:
-              error?.message || "پیگیری وضعیت تبدیل ویدیو انجام نشد.",
-          });
-          return;
+          throw new Error(
+            error?.message || "پیگیری وضعیت تبدیل ویدیو انجام نشد.",
+          );
         }
       }
     }
-    this.setState({
-      errorMessage: "تبدیل ویدیو بیشتر از زمان مجاز طول کشید.",
-    });
+    throw new Error("تبدیل ویدیو بیشتر از زمان مجاز طول کشید.");
   };
 
   startFileShare = async (useMediaSoup: boolean) => {
@@ -1690,6 +1738,17 @@ export class App extends React.Component<AppProps, AppState> {
     return isHttp(this.state.roomMedia) || isMagnet(this.state.roomMedia);
   };
 
+  isManagedProgressiveHls = (source = this.state.roomMedia) => {
+    try {
+      const pathname = new URL(source, window.location.origin).pathname;
+      return (
+        pathname.startsWith("/media/") && pathname.endsWith("/master.m3u8")
+      );
+    } catch {
+      return false;
+    }
+  };
+
   playingScreenShare = () => {
     return isScreenShare(this.state.roomMedia);
   };
@@ -1720,6 +1779,11 @@ export class App extends React.Component<AppProps, AppState> {
     // For live this is the offset from the leading edge (negative)
     if (this.state.isLiveStream) {
       target = this.Player().getDuration() + (customTime ?? 0);
+    } else if (this.isManagedProgressiveHls()) {
+      const duration = this.Player().getDuration();
+      if (Number.isFinite(duration) && duration > 0) {
+        target = Math.min(target, Math.max(0, duration - 0.25));
+      }
     }
     if (target >= 0 && target < Infinity) {
       console.log("syncing self to leader or custom:", target);
@@ -2196,10 +2260,16 @@ export class App extends React.Component<AppProps, AppState> {
   };
 
   getLeaderTime = () => {
-    if (this.state.participants.length > 2) {
-      return calculateMedian(Object.values(this.state.tsMap));
+    const timestamps = Object.values(this.state.tsMap).filter((value) =>
+      Number.isFinite(value),
+    );
+    if (!timestamps.length) {
+      return this.Player().getCurrentTime();
     }
-    return Math.max(...Object.values(this.state.tsMap));
+    if (this.state.participants.length > 2) {
+      return calculateMedian(timestamps);
+    }
+    return Math.max(...timestamps);
   };
 
   onVideoEnded = (url: string) => {

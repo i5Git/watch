@@ -11,7 +11,11 @@
   width: 100%;
   padding: 10px 14px;
   color: var(--watch-text);
-  background: linear-gradient(180deg, rgba(5, 9, 18, 0.52), rgba(5, 9, 18, 0.94));
+  background: linear-gradient(
+    180deg,
+    rgba(5, 9, 18, 0.52),
+    rgba(5, 9, 18, 0.94)
+  );
   border-top: 1px solid rgba(255, 255, 255, 0.11);
   box-shadow: 0 -12px 32px rgba(0, 0, 0, 0.18);
   direction: ltr;
@@ -152,20 +156,26 @@
 }
 
 .syncButton {
-  height: 38px;
-  padding-inline: 10px;
-  border-radius: 12px;
+  position: relative;
   color: rgba(248, 250, 255, 0.76);
   background: rgba(255, 255, 255, 0.055);
-}
-
-.syncButton :global(.mantine-Button-label) {
-  gap: 6px;
 }
 
 .syncNeeded {
   color: #fff;
   background: rgba(91, 141, 239, 0.2);
+}
+
+.syncDot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 6px;
+  height: 6px;
+  border: 1px solid rgba(8, 13, 24, 0.8);
+  border-radius: 50%;
+  background: var(--watch-coral);
+  box-shadow: 0 0 8px rgba(255, 120, 112, 0.75);
 }
 
 .rateButton {
@@ -243,38 +253,23 @@
     height: 42px;
   }
 
-  .syncButton {
-    height: 36px;
-    padding-inline: 8px;
-  }
-
   .volumeSlider {
     width: 58px;
   }
 }
 
 @media (max-width: 560px) {
-  .fullscreen .syncButton span {
+  .optionalAction,
+  .theaterAction,
+  .volumeSlider {
     display: none;
   }
 
-  .fullscreen .syncButton {
-    width: 36px;
-    min-width: 36px;
-    padding: 0;
+  .actionRow {
+    justify-content: space-between;
   }
 
-  .fullscreen .optionalAction,
-  .fullscreen .theaterAction,
-  .fullscreen .volumeSlider {
-    display: none;
-  }
-
-  .fullscreen .actionRow {
-    justify-content: center;
-  }
-
-  .fullscreen .secondaryActions {
+  .secondaryActions {
     flex: 0 1 auto;
   }
 }
@@ -292,12 +287,6 @@
   .fullscreen .playButton {
     width: 40px;
     height: 40px;
-  }
-
-  .fullscreen .syncButton {
-    width: 34px;
-    min-width: 34px;
-    height: 34px;
   }
 
   .fullscreen .rateButton {

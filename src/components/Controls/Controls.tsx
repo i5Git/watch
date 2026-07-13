@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Badge, Button, Menu, Progress, Slider } from "@mantine/core";
+import { Badge, Menu, Progress, Slider } from "@mantine/core";
 import {
   IconBadgeCc,
   IconCheck,
@@ -60,7 +60,10 @@ export const Controls = (props: ControlsProps) => {
     setVolumeValue(props.volume);
   }, [props.volume]);
 
-  const getEnd = () => props.duration;
+  const getEnd = () =>
+    Number.isFinite(props.duration) && props.duration > 0
+      ? props.duration
+      : Math.max(props.currentTime, 0);
   const getLength = () => getEnd();
   const getCurrent = () => props.currentTime;
   const getPercent = () => getCurrent() / getLength();
@@ -90,11 +93,11 @@ export const Controls = (props: ControlsProps) => {
     roomPlaybackRate,
   } = props;
 
-  const behindTime =
-    !isLiveStream && leaderTime && leaderTime < Infinity
-      ? leaderTime - getCurrent()
-      : getEnd() - getCurrent();
-  const isBehind = behindTime > 10;
+  const syncDelta =
+    !isLiveStream && Number.isFinite(leaderTime)
+      ? Number(leaderTime) - getCurrent()
+      : 0;
+  const isOutOfSync = Math.abs(syncDelta) > 0.35;
   const buffers = timeRanges.map(({ start, end }) => {
     const buffStartPct = (start / getLength()) * 100;
     const buffLengthPct = ((end - start) / getLength()) * 100;
@@ -204,18 +207,24 @@ export const Controls = (props: ControlsProps) => {
               <IconPlayerSkipForwardFilled size={19} />
             </button>
           )}
-          <Button
-            size="compact-sm"
-            className={`${styles.syncButton} ${isBehind ? styles.syncNeeded : ""}`}
-            variant="subtle"
-            title="همگام‌سازی با پخش اتاق"
+          <button
+            type="button"
+            className={`${styles.actionButton} ${styles.syncButton} ${
+              isOutOfSync ? styles.syncNeeded : ""
+            }`}
+            title={
+              isOutOfSync
+                ? `اختلاف ${Math.abs(syncDelta).toFixed(1)} ثانیه — همگام‌سازی`
+                : "همگام با اتاق"
+            }
+            aria-label="همگام‌سازی با پخش اتاق"
             onClick={() =>
               isLiveStream ? roomSeek(props.duration) : localSeek()
             }
           >
-            <IconRefresh size={16} />
-            <span>همگام‌سازی</span>
-          </Button>
+            <IconRefresh size={19} />
+            {isOutOfSync && <span className={styles.syncDot} />}
+          </button>
         </div>
 
         <div className={styles.secondaryActions}>

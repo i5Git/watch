@@ -370,7 +370,8 @@ app.post("/api/media/upload", requireAuth, async (req, res) => {
   try {
     const encodedFilename = req.header("x-file-name") || "video";
     const filename = decodeURIComponent(encodedFilename);
-    const convertToMp4 = req.header("x-convert-mp4") === "true";
+    const preset = req.header("x-transcode-preset");
+    const playWhen = req.header("x-play-when");
     const contentLength = Number(req.header("content-length") || 0);
     if (
       contentLength &&
@@ -380,7 +381,10 @@ app.post("/api/media/upload", requireAuth, async (req, res) => {
       return;
     }
     req.setTimeout(0);
-    const record = await uploadMedia(req, req.appUser!, filename, convertToMp4);
+    const record = await uploadMedia(req, req.appUser!, filename, {
+      preset,
+      playWhen,
+    });
     res.status(202).json(record);
   } catch (error: any) {
     res.status(400).json({

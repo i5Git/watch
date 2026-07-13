@@ -13,7 +13,7 @@ import {
   type ProbedMedia,
   type TranscodeProgress,
 } from "./transcoding.ts";
-import { getMediaSettings } from "./mediaSettings.ts";
+import { getMediaSettings, normalizeMediaPreset } from "./mediaSettings.ts";
 
 export type MediaStatus =
   "uploading" | "queued" | "converting" | "playable" | "ready" | "failed";
@@ -44,6 +44,10 @@ export interface MediaRecord {
   metadata?: ProbedMedia;
   progress?: MediaProgress;
   error?: string;
+  transcode?: {
+    preset: string;
+    playWhen: "playable" | "ready";
+  };
 }
 
 interface ActiveJob {
@@ -293,7 +297,14 @@ const runConversion = async (id: string) => {
       });
     });
 
-    const settings = getMediaSettings();
+    const defaultSettings = getMediaSettings();
+    const settings = {
+      ...defaultSettings,
+      preset: normalizeMediaPreset(
+        initial.transcode?.preset,
+        defaultSettings.preset,
+      ),
+    };
     let lastProgressWrite = 0;
     const child = getTranscodeBackend().start({
       inputPath,
@@ -469,7 +480,10 @@ export const uploadMedia = async (
   },
   user: AppUser,
   originalNameInput: unknown,
-  _convertToMp4: boolean,
+  options?: {
+    preset?: unknown;
+    playWhen?: unknown;
+  },
 ) => {
   ensureMediaDirectory();
   const generation = mediaCacheGeneration;
@@ -500,6 +514,10 @@ export const uploadMedia = async (
       speed: 0,
       etaSeconds: null,
       processedSeconds: 0,
+    },
+    transcode: {
+      preset: normalizeMediaPreset(options?.preset),
+      playWhen: options?.playWhen === "ready" ? "ready" : "playable",
     },
   };
   updateRecord(record);

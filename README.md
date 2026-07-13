@@ -11,6 +11,7 @@ This is a standalone redesign based on the open-source WatchParty project. The u
 - Synchronized rooms with direct MP4/HLS playback, playlists, chat, subtitles, and invite links.
 - Upload a video to the VPS without waiting for conversion.
 - Persistent background MKV/video to HLS queue with progressive playback after the first 30 seconds are available.
+- Per-upload FFmpeg preset selection and a choice between early progressive playback or waiting for the complete conversion.
 - H.264/yuv420p video, automatic AAC handling, six-second segments, posters, preview thumbnails, metadata, progress, speed, and ETA.
 - Admin-configurable encoder preset, CRF, segment length, audio mode, original-file retention, and worker count.
 - Admin controls to retry, cancel, rebuild, or remove individual media outputs.
@@ -108,6 +109,8 @@ Do not commit `.env`, database URLs, Redis URLs, TURN credentials, or other secr
 Each new upload is stored under `data/media/<movie-id>/`. The original file is preserved by default, while `master.m3u8`, numbered transport-stream segments, `poster.jpg`, `thumbnail.jpg`, and `metadata.json` are generated in the same folder. The queue survives restarts: interrupted jobs return to the queued state when Watch starts again.
 
 The HLS playlist is published progressively. Once at least 30 seconds of segments exist, the room switches to the HLS source automatically and FFmpeg continues appending segments until the final playlist is complete. Media settings and per-movie recovery controls are available in the administrator panel.
+
+The upload dialog can instead keep the room on its current media until conversion reaches 100%. In that mode it remains open and displays the encoding percentage, speed, status, and estimated remaining time.
 
 For direct browser playback, MP4 with H.264/AAC or HLS is the safest choice. MKV and other containers are automatically converted through the room upload dialog.
 

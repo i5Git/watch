@@ -25,6 +25,11 @@ const allowedPresets = new Set([
   "veryslow",
 ]);
 
+export const normalizeMediaPreset = (value: unknown, fallback = "veryfast") => {
+  const preset = String(value ?? fallback).toLowerCase();
+  return allowedPresets.has(preset) ? preset : fallback;
+};
+
 const defaults: MediaSettings = {
   preset: "veryfast",
   crf: 23,
@@ -56,10 +61,10 @@ const boundedInteger = (
 };
 
 const sanitize = (input: Partial<MediaSettings>): MediaSettings => {
-  const preset = String(input.preset ?? defaults.preset).toLowerCase();
+  const preset = normalizeMediaPreset(input.preset, defaults.preset);
   const audioMode = String(input.audioMode ?? defaults.audioMode) as AudioMode;
   return {
-    preset: allowedPresets.has(preset) ? preset : defaults.preset,
+    preset,
     crf: boundedInteger(input.crf, defaults.crf, 0, 51),
     segmentLength: boundedInteger(
       input.segmentLength,
