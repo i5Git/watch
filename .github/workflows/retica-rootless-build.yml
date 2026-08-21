@@ -1,0 +1,196 @@
+name: Retica Rootless Fix Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-retica:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare Retica crash-fix source
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p /tmp/retica-fix
+          cat > /tmp/retica-fix/Tweak.m <<'EOF'
+          #import <UIKit/UIKit.h>
+          #import <objc/runtime.h>
+          #import <substrate.h>
+
+          static IMP gOrigProminentLayout = NULL;
+          static IMP gOrigLegacyLayout = NULL;
+          static const void *kRTCProminentApplyingKey = &kRTCProminentApplyingKey;
+          static const void *kRTCLegacyApplyingKey = &kRTCLegacyApplyingKey;
+
+          static inline BOOL RTCBeginClockLayout(UIView *view, const void *key) {
+              if (!view || !view.window) return NO;
+              if ([objc_getAssociatedObject(view, key) boolValue]) return NO;
+              objc_setAssociatedObject(view, key, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+              return YES;
+          }
+
+          static inline void RTCEndClockLayout(UIView *view, const void *key) {
+              if (view) objc_setAssociatedObject(view, key, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+          }
+
+          static void RTCProminentLayout(id self, SEL _cmd) {
+              UIView *view = (UIView *)self;
+              if (!RTCBeginClockLayout(view, kRTCProminentApplyingKey)) return;
+              @try {
+                  if (gOrigProminentLayout) ((void (*)(id, SEL))gOrigProminentLayout)(self, _cmd);
+              } @finally {
+                  RTCEndClockLayout(view, kRTCProminentApplyingKey);
+              }
+          }
+
+          static void RTCLegacyLayout(id self, SEL _cmd) {
+              UIView *view = (UIView *)self;
+              if (!RTCBeginClockLayout(view, kRTCLegacyApplyingKey)) return;
+              @try {
+                  if (gOrigLegacyLayout) ((void (*)(id, SEL))gOrigLegacyLayout)(self, _cmd);
+              } @finally {
+                  RTCEndClockLayout(view, kRTCLegacyApplyingKey);
+              }
+          }
+
+          static void RTCInstallHooks(void) {
+              SEL layoutSEL = @selector(layoutSubviews);
+              Class prominent = objc_getClass("CSProminentTimeView");
+              if (prominent) MSHookMessageEx(prominent, layoutSEL, (IMP)RTCProminentLayout, &gOrigProminentLayout);
+              Class legacy = objc_getClass("SBFLockScreenDateView");
+              if (legacy) MSHookMessageEx(legacy, layoutSEL, (IMP)RTCLegacyLayout, &gOrigLegacyLayout);
+          }
+
+          __attribute__((constructor)) static void RTCInit(void) {
+              @autoreleasepool {
+                  if (![NSBundle.mainBundle.bundleIdentifier isEqualToString:@"com.apple.springboard"]) return;
+                  dispatch_async(dispatch_get_main_queue(), ^{ RTCInstallHooks(); });
+              }
+          }
+          EOF
+
+          cat > /tmp/retica-fix/Makefile <<'EOF'
+          ARCHS = arm64 arm64e
+          TARGET = iphone:clang:latest:15.0
+          THEOS_PACKAGE_SCHEME = rootless
+          FINALPACKAGE = 1
+          include $(THEOS)/makefiles/common.mk
+          TWEAK_NAME = ZZReticaCrashFix
+          ZZReticaCrashFix_FILES = Tweak.m
+          ZZReticaCrashFix_CFLAGS = -fobjc-arc
+          ZZReticaCrashFix_FRAMEWORKS = UIKit
+          include $(THEOS_MAKE_PATH)/tweak.mk
+          EOF
+
+          cat > /tmp/retica-fix/control <<'EOF'
+          Package: com.i5.retica-crashfix-build
+          Name: Retica CrashFix Build Component
+          Version: 1.0.0
+          Architecture: iphoneos-arm64
+          Description: Build component merged into Retica Rootless 1.0.
+          Maintainer: i5
+          Author: i5
+          Section: Tweaks
+          Depends: mobilesubstrate
+          EOF
+
+          cat > /tmp/retica-fix/ZZReticaCrashFix.plist <<'EOF'
+          {
+              Filter = {
+                  Bundles = (
+                      "com.apple.springboard"
+                  );
+              };
+          }
+          EOF
+
+      - name: Install Theos and SDK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          export THEOS="$HOME/theos"
+          git clone --recursive --depth 1 https://github.com/theos/theos.git "$THEOS"
+          rm -rf "$THEOS/sdks"
+          git clone --depth 1 https://github.com/theos/sdks.git "$THEOS/sdks"
+          brew install ldid xz || true
+
+      - name: Build rootless safety dylib
+        shell: bash
+        run: |
+          set -euxo pipefail
+          export THEOS="$HOME/theos"
+          cd /tmp/retica-fix
+          make clean
+          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless
+          find . -maxdepth 5 -type f -print
+
+      - name: Download and inspect original Retica Rootless 1.0
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cd /tmp/retica-fix
+          curl -fL --retry 5 --retry-delay 2 \
+            https://ivintagelover.github.io/repo/pkg/com.ivintagelover.reticarl.deb \
+            -o ReticaRootless-1.0-original.deb
+          dpkg-deb -I ReticaRootless-1.0-original.deb
+          rm -rf original
+          dpkg-deb -R ReticaRootless-1.0-original.deb original
+          find original/var/jb/Library/MobileSubstrate/DynamicLibraries -maxdepth 1 -type f -print || true
+          for f in original/var/jb/Library/MobileSubstrate/DynamicLibraries/*.dylib; do
+            [ -f "$f" ] || continue
+            echo "=== $f ==="
+            dwarfdump --uuid "$f" || true
+            strings "$f" | grep -E 'CSProminentTimeView|SBFLockScreenDateView|layoutSubviews|didMoveToWindow' | sort -u | head -100 || true
+          done
+
+      - name: Merge fix into Retica Rootless
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cd /tmp/retica-fix
+          rm -rf patch
+          mkdir patch
+          PATCH_DEB="$(find packages -type f -name '*.deb' | head -1)"
+          test -f "$PATCH_DEB"
+          dpkg-deb -R "$PATCH_DEB" patch
+          PATCH_DYLIB="$(find patch -type f -name 'ZZReticaCrashFix.dylib' | head -1)"
+          PATCH_PLIST="$(find patch -type f -name 'ZZReticaCrashFix.plist' | head -1)"
+          test -f "$PATCH_DYLIB"
+          test -f "$PATCH_PLIST"
+
+          TARGET_DIR="original/var/jb/Library/MobileSubstrate/DynamicLibraries"
+          mkdir -p "$TARGET_DIR"
+          cp "$PATCH_DYLIB" "$TARGET_DIR/ZZReticaCrashFix.dylib"
+          cp "$PATCH_PLIST" "$TARGET_DIR/ZZReticaCrashFix.plist"
+          chmod 755 "$TARGET_DIR/ZZReticaCrashFix.dylib"
+          chmod 644 "$TARGET_DIR/ZZReticaCrashFix.plist"
+
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('/tmp/retica-fix/original/DEBIAN/control')
+          lines = []
+          for line in p.read_text().splitlines():
+              if line.startswith('Version:'):
+                  line = 'Version: 1.0.1-i5fix1'
+              elif line.startswith('Name:'):
+                  line = 'Name: Retica Rootless (Screen-Off Fix)'
+              lines.append(line)
+          p.write_text('\n'.join(lines) + '\n')
+          PY
+
+          dpkg-deb -b original /tmp/ReticaRootless-1.0.1-i5fix1.deb
+          dpkg-deb -I /tmp/ReticaRootless-1.0.1-i5fix1.deb
+          shasum -a 256 /tmp/ReticaRootless-1.0.1-i5fix1.deb
+
+      - name: Upload patched Retica DEB
+        uses: actions/upload-artifact@v4
+        with:
+          name: ReticaRootless-1.0.1-i5fix1
+          path: /tmp/ReticaRootless-1.0.1-i5fix1.deb
+          if-no-files-found: error
