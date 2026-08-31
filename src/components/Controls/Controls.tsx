@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Badge, Menu, Progress, Slider } from "@mantine/core";
+import { Badge, Menu, Progress } from "@mantine/core";
 import {
   IconBadgeCc,
   IconCheck,
@@ -365,15 +365,27 @@ export const Controls = (props: ControlsProps) => {
               {muted ? <IconVolumeOff size={21} /> : <IconVolume size={21} />}
             </button>
             <div className={styles.volumeSlider} dir="ltr">
-              <Slider
+              <input
+                className={styles.volumeRange}
+                type="range"
+                dir="ltr"
                 value={volumeValue}
                 disabled={muted}
                 min={0}
                 max={1}
                 step={0.01}
-                onChange={setVolumeValue}
-                onChangeEnd={props.localSetVolume}
+                onChange={(event) => {
+                  const nextVolume = Number(event.currentTarget.value);
+                  setVolumeValue(nextVolume);
+                  props.localSetVolume(nextVolume);
+                }}
+                style={
+                  {
+                    "--volume-level": `${volumeValue * 100}%`,
+                  } as React.CSSProperties
+                }
                 aria-label="بلندی صدا"
+                aria-valuetext={`${Math.round(volumeValue * 100)}%`}
               />
             </div>
           </div>

@@ -15,6 +15,7 @@ import {
 import twitch from "twitch-m3u8";
 import { type QueryResult } from "pg";
 import { Docker } from "./vm/docker.ts";
+import { isServerMediaPath, resolveServerMediaPath } from "./media.ts";
 
 // Stateless pool instance to use for VMs if full management isn't needed
 let stateless: Docker | undefined = undefined;
@@ -55,8 +56,8 @@ export class Room {
   // Non-serialized state
   public roomId: string;
   public roster: User[] = [];
-  private lastTsMap = Date.now();
   private tsMap: NumberDict = {};
+  private tsReceivedAt: NumberDict = {};
   private io: Server;
   private socketIdMap: StringDict = {};
   private tsInterval: NodeJS.Timeout | undefined = undefined;
@@ -95,13 +96,13 @@ export class Room {
       Object.keys(this.tsMap).forEach((key) => {
         if (!memberIds.includes(key)) {
           delete this.tsMap[key];
+          delete this.tsReceivedAt[key];
         }
       });
       if (this.video) {
-        this.lastTsMap = Date.now();
-        io.of(roomId).emit("REC:tsMap", this.tsMap);
+        io.of(roomId).emit("REC:tsMap", this.getProjectedTsMap());
       }
-    }, 1000);
+    }, 500);
 
     io.of(roomId).use(async (socket, next) => {
       if (postgres) {
@@ -191,7 +192,7 @@ export class Room {
       }
       // Keep track of the current socketID associated with this client (only used for signaling and kicking)
       this.socketIdMap[clientId] = socket.id;
-      if (!this.roster.find(user => user.id === clientId)) {
+      if (!this.roster.find((user) => user.id === clientId)) {
         this.roster.push({ id: clientId });
       }
 
@@ -209,7 +210,7 @@ export class Room {
 
       socket.emit("REC:host", this.getHostState());
       socket.emit("REC:nameMap", this.nameMap);
-      socket.emit("REC:tsMap", this.tsMap);
+      socket.emit("REC:tsMap", this.getProjectedTsMap());
       socket.emit("REC:lock", this.lock);
       socket.emit("chatinit", this.chat);
       socket.emit("playlist", this.playlist);
@@ -238,7 +239,14 @@ export class Room {
         this.changeUserName(socket, socket.data.appUser.username),
       );
       socket.on("CMD:host", (data: unknown) => {
-        validateLock() && this.startHosting(socket, String(data));
+        if (validateLock()) {
+          void this.startHosting(socket, String(data)).catch((error: any) => {
+            socket.emit(
+              "errorMessage",
+              error?.message || "The media source could not be opened.",
+            );
+          });
+        }
       });
       socket.on("CMD:play", () => {
         validateLock() && this.playVideo(socket);
@@ -451,9 +459,15 @@ export class Room {
   };
 
   private getHostState = (): HostState => {
+    const projectedTimes = Object.values(this.getProjectedTsMap()).filter(
+      Number.isFinite,
+    );
+    const projectedRoomTime = projectedTimes.length
+      ? Math.max(this.videoTS, ...projectedTimes)
+      : this.videoTS;
     return {
       video: this.video ?? "",
-      videoTS: this.videoTS,
+      videoTS: projectedRoomTime,
       subtitle: this.subtitle,
       playbackRate: this.playbackRate,
       paused: this.paused,
@@ -513,6 +527,7 @@ export class Room {
     this.loop = false;
     this.playbackRate = 1;
     this.tsMap = {};
+    this.tsReceivedAt = {};
     this.preventTSUpdate = true;
     setTimeout(() => (this.preventTSUpdate = false), 1000);
     this.io.of(this.roomId).emit("REC:tsMap", this.tsMap);
@@ -564,6 +579,9 @@ export class Room {
       return;
     }
     redisCount("urlStarts");
+    if (isServerMediaPath(data)) {
+      data = resolveServerMediaPath(data).url;
+    }
     if (config.STREAM_PATH && data?.startsWith(config.STREAM_PATH)) {
       redisCount("streamStarts");
     }
@@ -646,6 +664,17 @@ export class Room {
     if (data && data.length > 20000) {
       return;
     }
+    if (isServerMediaPath(data)) {
+      try {
+        data = resolveServerMediaPath(data).url;
+      } catch (error: any) {
+        socket?.emit(
+          "errorMessage",
+          error?.message || "The media source could not be opened.",
+        );
+        return;
+      }
+    }
     redisCount("playlistAdds");
     const youtubeVideoId = getYoutubeVideoID(data);
     const item = {
@@ -704,41 +733,50 @@ export class Room {
   };
 
   private playVideo = (socket: Socket) => {
+    this.materializeTimestamps();
+    this.paused = false;
     socket.broadcast.emit("REC:play", this.video);
     const chatMsg = {
       id: socket.clientId,
       cmd: "play",
       msg: this.tsMap[socket.clientId]?.toString(),
     };
-    this.paused = false;
     this.addChatMessage(socket, chatMsg);
   };
 
   private pauseVideo = (socket: Socket) => {
+    this.materializeTimestamps();
+    this.paused = true;
     socket.broadcast.emit("REC:pause");
     const chatMsg = {
       id: socket.clientId,
       cmd: "pause",
       msg: this.tsMap[socket.clientId]?.toString(),
     };
-    this.paused = true;
     this.addChatMessage(socket, chatMsg);
   };
 
   private seekVideo = (socket: Socket, data: number) => {
-    if (String(data).length > 100) {
+    if (!Number.isFinite(data) || String(data).length > 100) {
       return;
     }
     this.videoTS = data;
-    socket.broadcast.emit("REC:seek", data);
+    const now = Date.now();
+    for (const participant of this.roster) {
+      this.tsMap[participant.id] = data;
+      this.tsReceivedAt[participant.id] = now;
+    }
+    this.io.of(this.roomId).emit("REC:seek", data);
+    this.io.of(this.roomId).emit("REC:tsMap", this.getProjectedTsMap(now));
     const chatMsg = { id: socket.clientId, cmd: "seek", msg: data?.toString() };
     this.addChatMessage(socket, chatMsg);
   };
 
   private setPlaybackRate = (socket: Socket, data: number) => {
-    if (String(data).length > 100) {
+    if (!Number.isFinite(data) || String(data).length > 100) {
       return;
     }
+    this.materializeTimestamps();
     this.playbackRate = Number(data);
     this.io.of(this.roomId).emit("REC:playbackRate", Number(data));
     const chatMsg = {
@@ -758,7 +796,7 @@ export class Room {
   };
 
   private setTimestamp = (socket: Socket, data: number) => {
-    if (String(data).length > 100) {
+    if (!Number.isFinite(data) || String(data).length > 100) {
       return;
     }
     // Prevent lagging TS updates from the old video from messing up our timestamps
@@ -770,12 +808,30 @@ export class Room {
     if (data < 0 || data > this.videoTS) {
       this.videoTS = data;
     }
-    // Normalize the received TS based on how long since the last tsMap emit
-    // Later sends will have higher values so subtract the difference
-    // Add 1 as we will emit 1 second from the last one
-    const timeSinceTsMap = Date.now() - this.lastTsMap;
-    // console.log(socket.clientId, 'offset', offset, 'ms');
-    this.tsMap[socket.clientId] = data - timeSinceTsMap / 1000 + 1;
+    this.tsMap[socket.clientId] = data;
+    this.tsReceivedAt[socket.clientId] = Date.now();
+  };
+
+  private getProjectedTsMap = (now = Date.now()): NumberDict => {
+    const projected: NumberDict = {};
+    const rate = this.playbackRate > 0 ? this.playbackRate : 1;
+    for (const [clientId, rawTime] of Object.entries(this.tsMap)) {
+      const receivedAt = Number(this.tsReceivedAt[clientId] || now);
+      const elapsedSeconds = Math.max(0, now - receivedAt) / 1000;
+      projected[clientId] =
+        this.paused || rawTime < 0
+          ? Number(rawTime)
+          : Number(rawTime) + elapsedSeconds * rate;
+    }
+    return projected;
+  };
+
+  private materializeTimestamps = () => {
+    const now = Date.now();
+    this.tsMap = this.getProjectedTsMap(now);
+    for (const clientId of Object.keys(this.tsMap)) {
+      this.tsReceivedAt[clientId] = now;
+    }
   };
 
   private isValidChatMessage = (msg: string | undefined) => {
@@ -1279,6 +1335,7 @@ export class Room {
       }
       this.io.of(this.roomId).emit("roster", this.getRosterForApp());
       delete this.tsMap[clientId];
+      delete this.tsReceivedAt[clientId];
       delete this.socketIdMap[clientId];
     }
     // Keep namemap/picturemap so old chat messages still render correctly after disconnect

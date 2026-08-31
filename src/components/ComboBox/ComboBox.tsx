@@ -5,6 +5,7 @@ import {
   getYouTubeResults,
   isHttp,
   isMagnet,
+  isServerMediaPath,
   isYouTube,
 } from "../../utils/utils";
 import { examples } from "../../utils/examples";
@@ -53,7 +54,7 @@ export class ComboBox extends React.Component<ComboBoxProps, ComboBoxState> {
     if (
       query === "" ||
       // Anything that doesn't pass this check we pass to YouTube as a search query
-      (query && (isHttp(query) || isMagnet(query)))
+      (query && (isHttp(query) || isMagnet(query) || isServerMediaPath(query)))
     ) {
       if (!value && this.props.mediaPath) {
         items = await getMediaPathResults(this.props.mediaPath, "");
@@ -156,13 +157,13 @@ export class ComboBox extends React.Component<ComboBoxProps, ComboBoxState> {
           <ActionIcon
             color="red"
             onClick={(e: any) => this.setMediaAndClose("")}
-        title={t("clear")}
+            title={t("clear")}
           >
             <IconX />
           </ActionIcon>
         }
         leftSection={this.state.loading ? <Loader size="sm" /> : <IconLink />}
-        placeholder="نشانی MP4، HLS، مگنت یا لینک یوتیوب را وارد کنید"
+        placeholder="لینک MP4/HLS، مسیر VPS، مگنت یا یوتیوب را وارد کنید"
         value={
           this.state.inputMedia !== undefined
             ? this.state.inputMedia

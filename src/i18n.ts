@@ -27,7 +27,7 @@ export const fa = {
   jumpToBottom: "رفتن به آخرین پیام",
   synced: "پخش همگام",
   source: "منبع رسانه",
-  sourcePlaceholder: "نشانی MP4 یا HLS را وارد کنید…",
+  sourcePlaceholder: "لینک MP4/HLS یا مسیر فایل روی VPS را وارد کنید…",
   playlist: "فهرست پخش",
   subtitles: "زیرنویس",
   subtitleLanguage: "زبان زیرنویس",
@@ -45,7 +45,8 @@ export const fa = {
   homeHeadline: "با هم تماشا کنید",
   homeSubhead:
     "یک اتاق خصوصی بسازید، لینک ویدیو را وارد کنید یا فایل را روی VPS آپلود کنید و لحظه‌ها را هم‌زمان با هم ببینید.",
-  homeHelper: "لینک‌های MP4 و HLS پشتیبانی می‌شوند.",
+  homeHelper:
+    "لینک MP4/HLS یا مسیر فایل داخل پوشه رسانه Watch روی VPS پشتیبانی می‌شود.",
   createRoom: "ساخت اتاق",
   howItWorks: "چطور کار می‌کند؟",
   featureSync: "پخش همگام",

@@ -3,7 +3,7 @@ import "./index.css";
 
 import React, { lazy, Suspense } from "react";
 import { createRoot } from "react-dom/client";
-import { BrowserRouter, Route } from "react-router-dom";
+import { BrowserRouter, Redirect, Route } from "react-router-dom";
 import { createTheme, Loader, MantineProvider } from "@mantine/core";
 import { App } from "./components/App/App";
 import { Home } from "./components/Home/Home";
@@ -13,7 +13,11 @@ import { Footer } from "./components/Footer/Footer";
 import { Create } from "./components/Create/Create";
 import { AdminPanel } from "./components/Admin/AdminPanel";
 import { AccessGate } from "./components/Auth/AccessGate";
-import { DEFAULT_STATE, MetadataContext, type ClientUser } from "./MetadataContext";
+import {
+  DEFAULT_STATE,
+  MetadataContext,
+  type ClientUser,
+} from "./MetadataContext";
 import { softWhite } from "./utils/utils";
 import { applyLocale } from "./i18n";
 import styles from "./index.module.css";
@@ -106,6 +110,17 @@ class WatchParty extends React.Component {
             </>
           )}
         />
+        <Route
+          path="/:roomCode"
+          exact
+          render={(props) =>
+            /^[a-z]{4}$/i.test(props.match.params.roomCode) ? (
+              <Redirect
+                to={`/watch/${props.match.params.roomCode.toUpperCase()}`}
+              />
+            ) : null
+          }
+        />
         <Route path="/create" exact render={() => <Create />} />
         <Route
           path="/watch/:roomId"
@@ -117,11 +132,7 @@ class WatchParty extends React.Component {
           exact
           render={(props) => <App vanity={props.match.params.vanity} />}
         />
-        <Route
-          path="/admin"
-          exact
-          render={() => <AdminPanel />}
-        />
+        <Route path="/admin" exact render={() => <AdminPanel />} />
         <Route path="/terms">
           <TopBar />
           <Terms />

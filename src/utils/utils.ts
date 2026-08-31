@@ -95,6 +95,25 @@ export const isMagnet = (input: string) => {
   return input.startsWith("magnet:");
 };
 
+export const isServerMediaPath = (input: string) => {
+  const value = String(input || "").trim();
+  if (!value) {
+    return false;
+  }
+  if (/^file:\/\//i.test(value)) {
+    return true;
+  }
+  if (/^[a-z][a-z0-9+.-]*:/i.test(value)) {
+    return false;
+  }
+  return (
+    value.startsWith("/") ||
+    value.startsWith("./") ||
+    value.includes("\\") ||
+    value.includes("/")
+  );
+};
+
 export const isHls = (input: string) => {
   return input.includes(".m3u8");
 };

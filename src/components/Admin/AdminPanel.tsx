@@ -22,6 +22,7 @@ import {
 } from "@mantine/core";
 import {
   IconCheck,
+  IconCopy,
   IconDatabaseX,
   IconDeviceFloppy,
   IconKey,
@@ -127,6 +128,25 @@ const request = async (url: string, options?: RequestInit) => {
     throw new Error(data?.error || "درخواست انجام نشد.");
   }
   return data;
+};
+
+const copyText = async (value: string) => {
+  if (navigator.clipboard && window.isSecureContext) {
+    await navigator.clipboard.writeText(value);
+    return;
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = value;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+  const copied = document.execCommand("copy");
+  textarea.remove();
+  if (!copied) {
+    throw new Error("Clipboard access is unavailable.");
+  }
 };
 
 export const AdminPanel = () => {
@@ -286,6 +306,23 @@ export const AdminPanel = () => {
       setError(actionError?.message || "عملیات رسانه انجام نشد.");
     } finally {
       setMediaActionId("");
+    }
+  };
+
+  const copyPlaybackLink = async (item: ManagedMedia) => {
+    const playbackPath = item.hlsUrl || item.originalUrl;
+    if (!playbackPath) {
+      setError("برای این رسانه هنوز لینک قابل پخشی وجود ندارد.");
+      return;
+    }
+    setNotice("");
+    setError("");
+    try {
+      const playbackUrl = new URL(playbackPath, window.location.origin).href;
+      await copyText(playbackUrl);
+      setNotice(`لینک پخش «${item.name}» کپی شد.`);
+    } catch (copyError: any) {
+      setError(copyError?.message || "کپی لینک پخش انجام نشد.");
     }
   };
 
@@ -682,15 +719,26 @@ export const AdminPanel = () => {
                         </Button>
                       )}
                       {item.hlsUrl && (
-                        <Button
-                          size="compact-xs"
-                          color="orange"
-                          variant="subtle"
-                          loading={mediaActionId === `${item.id}:hls`}
-                          onClick={() => runMediaAction(item, "hls")}
-                        >
-                          حذف HLS
-                        </Button>
+                        <>
+                          <Button
+                            size="compact-xs"
+                            color="teal"
+                            variant="light"
+                            leftSection={<IconCopy size={15} />}
+                            onClick={() => void copyPlaybackLink(item)}
+                          >
+                            کپی لینک پخش
+                          </Button>
+                          <Button
+                            size="compact-xs"
+                            color="orange"
+                            variant="subtle"
+                            loading={mediaActionId === `${item.id}:hls`}
+                            onClick={() => runMediaAction(item, "hls")}
+                          >
+                            حذف HLS
+                          </Button>
+                        </>
                       )}
                       {item.originalUrl && (
                         <Button

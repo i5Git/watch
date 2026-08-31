@@ -48,6 +48,8 @@ import {
   notifyMediaSettingsChanged,
   rebuildMediaHls,
   retryMediaConversion,
+  isServerMediaPath,
+  resolveServerMediaPath,
   uploadMedia,
 } from "./media.ts";
 import { getSiteSettings, updateSiteSettings } from "./siteSettings.ts";
@@ -607,8 +609,38 @@ app.get("/youtubePlaylist/:playlistId", async (req, res) => {
 });
 
 app.post("/createRoom", requireAuth, async (req, res) => {
-  const genName = () => "/" + makeRoomName(config.SHARD);
-  let name = genName();
+  let preload = (req.body?.video || "").slice(0, 20000);
+  if (preload && isServerMediaPath(preload)) {
+    try {
+      preload = resolveServerMediaPath(preload).url;
+    } catch (error: any) {
+      res.status(400).json({
+        error: error?.message || "The VPS media path could not be opened.",
+      });
+      return;
+    }
+  }
+
+  let name = "";
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const candidate = "/" + makeRoomName(config.SHARD);
+    if (rooms.has(candidate)) {
+      continue;
+    }
+    const existing = await postgres?.query(
+      `SELECT 1 from room where "roomId" = $1 LIMIT 1`,
+      [candidate],
+    );
+    if (!existing?.rows.length) {
+      name = candidate;
+      break;
+    }
+  }
+  if (!name) {
+    res.status(503).json({ error: "Unable to allocate a room code." });
+    return;
+  }
+
   console.log("createRoom: ", name);
   const newRoom = new Room(io, name);
   if (postgres) {
@@ -627,7 +659,6 @@ app.post("/createRoom", requireAuth, async (req, res) => {
     }
   }
   newRoom.creator = req.appUser?.username;
-  const preload = (req.body?.video || "").slice(0, 20000);
   if (preload) {
     redisCount("createRoomPreload");
     newRoom.video = preload;

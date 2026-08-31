@@ -75,50 +75,62 @@ export const Home = () => {
     }
   };
 
-  const openRoom = (value: string) => {
+  const openRoom = (rawValue: string) => {
+    const value = rawValue.trim();
     if (!value) {
+      return;
+    }
+    if (/^[a-z]{4}$/i.test(value)) {
+      window.location.assign(`/watch/${value.toUpperCase()}`);
       return;
     }
     try {
       const url = new URL(value, window.location.origin);
-      if (!url.pathname.startsWith("/watch/") && !url.pathname.startsWith("/r/")) {
-        setError("این لینک، لینک معتبر اتاق نیست.");
+      const directCode = url.pathname.match(/^\/([a-z]{4})\/?$/i);
+      if (directCode) {
+        window.location.assign(`/watch/${directCode[1].toUpperCase()}`);
+        return;
+      }
+      if (
+        !url.pathname.startsWith("/watch/") &&
+        !url.pathname.startsWith("/r/")
+      ) {
+        setError("کد چهارحرفی یا لینک معتبر اتاق را وارد کنید.");
+        return;
+      }
+      const watchCode = url.pathname.match(/^\/watch\/([a-z]{4})\/?$/i);
+      if (watchCode) {
+        window.location.assign(
+          `/watch/${watchCode[1].toUpperCase()}${url.search}`,
+        );
         return;
       }
       window.location.assign(url.pathname + url.search);
     } catch {
-      setError("این لینک معتبر نیست.");
+      setError("کد یا لینک اتاق معتبر نیست.");
     }
   };
 
-  const joinRoom = () => {
-    const value = window.prompt("لینک اتاق را وارد کنید:");
-    if (value) {
-      openRoom(value);
-    }
+  const joinRoom = (event: FormEvent) => {
+    event.preventDefault();
+    setError("");
+    openRoom(roomUrl);
   };
 
   if (!siteSettings.landingEnabled) {
     return (
       <main className={styles.simpleJoinPage} dir="rtl">
-        <form
-          className={styles.simpleJoinCard}
-          onSubmit={(event) => {
-            event.preventDefault();
-            setError("");
-            openRoom(roomUrl.trim());
-          }}
-        >
+        <form className={styles.simpleJoinCard} onSubmit={joinRoom}>
           <span className={styles.heroPlayMark}>
             <IconPlayerPlayFilled size={20} />
           </span>
           <h1>{siteSettings.brandName}</h1>
-          <p>لینک اتاق را وارد کنید.</p>
+          <p>کد چهارحرفی یا لینک اتاق را وارد کنید.</p>
           <TextInput
             required
             value={roomUrl}
             onChange={(event) => setRoomUrl(event.currentTarget.value)}
-            placeholder={`${window.location.origin}/watch/...`}
+            placeholder="ABCD یا لینک اتاق"
             leftSection={<IconLink size={18} />}
             dir="ltr"
           />
@@ -163,17 +175,26 @@ export const Home = () => {
               >
                 {t("createRoom")}
               </Button>
-              <Button
-                type="button"
-                variant="outline"
-                className={styles.secondaryAction}
-                rightSection={<IconArrowLeft size={18} />}
-                onClick={joinRoom}
-              >
-                {t("joinRoom")}
-              </Button>
             </div>
             {error && <div className={styles.error}>{error}</div>}
+          </form>
+          <form className={styles.joinForm} onSubmit={joinRoom}>
+            <TextInput
+              aria-label="کد یا لینک اتاق"
+              value={roomUrl}
+              onChange={(event) => setRoomUrl(event.currentTarget.value)}
+              placeholder="کد چهارحرفی مثل ABCD یا لینک اتاق"
+              leftSection={<IconLink size={18} />}
+              dir="ltr"
+            />
+            <Button
+              type="submit"
+              variant="outline"
+              className={styles.secondaryAction}
+              rightSection={<IconArrowLeft size={18} />}
+            >
+              {t("joinRoom")}
+            </Button>
           </form>
         </div>
         <div className={styles.heroPreview}>

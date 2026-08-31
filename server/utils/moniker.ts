@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import crypto from "node:crypto";
 import { resolveShard } from "./resolveShard.ts";
 
 let adjectives = fs
@@ -9,25 +10,21 @@ const nouns = fs
   .readFileSync(process.cwd() + "/words/nouns.txt")
   .toString()
   .split(/\r?\n/);
-const verbs = fs
-  .readFileSync(process.cwd() + "/words/verbs.txt")
-  .toString()
-  .split(/\r?\n/);
 const randomElement = (array: string[]) =>
   array[Math.floor(Math.random() * array.length)];
+const roomAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ";
 
 export function makeRoomName(shard: number | undefined) {
-  let filteredAdjectives = adjectives;
-  if (shard) {
-    // Filter the adjective list by shard
-    filteredAdjectives = adjectives.filter(
-      (adj) => resolveShard(adj) === Number(shard),
-    );
+  for (let attempt = 0; attempt < 1000; attempt += 1) {
+    const code = Array.from(
+      { length: 4 },
+      () => roomAlphabet[crypto.randomInt(roomAlphabet.length)],
+    ).join("");
+    if (!shard || resolveShard(code) === Number(shard)) {
+      return code;
+    }
   }
-  const adjective = randomElement(filteredAdjectives);
-  const noun = randomElement(nouns);
-  const verb = randomElement(verbs);
-  return `${adjective}-${noun}-${verb}`;
+  throw new Error("Unable to generate a room code for this shard.");
 }
 
 export function makeUserName() {

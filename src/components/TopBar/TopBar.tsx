@@ -88,10 +88,7 @@ export const AccountMenu = () => {
             مدیریت سایت
           </Menu.Item>
         )}
-        <Menu.Item
-          leftSection={<IconLogout size={16} />}
-          onClick={signOut}
-        >
+        <Menu.Item leftSection={<IconLogout size={16} />} onClick={signOut}>
           خروج
         </Menu.Item>
       </Menu.Dropdown>
@@ -106,17 +103,27 @@ export const SignInButton = AccountMenu;
 export const TopBar = (props: {
   hideNewRoom?: boolean;
   hideSignin?: boolean;
+  roomCode?: string;
   roomTitle?: string;
   roomDescription?: string;
   roomTitleColor?: string;
 }) => {
   const { siteSettings } = useContext(MetadataContext);
-  const isRoom = Boolean(props.roomTitle || props.roomDescription);
+  const compactRoomCode = /^[a-z]{4}$/i.test(props.roomCode || "")
+    ? props.roomCode?.toUpperCase()
+    : undefined;
+  const isRoom = Boolean(
+    compactRoomCode || props.roomTitle || props.roomDescription,
+  );
 
   return (
     <header className={styles.topBar} dir="rtl">
       <div className={styles.brandCluster}>
-        <a href="/" className={styles.brand} aria-label={siteSettings.brandName}>
+        <a
+          href="/"
+          className={styles.brand}
+          aria-label={siteSettings.brandName}
+        >
           <span className={styles.brandMark}>
             <IconPlayerPlayFilled size={16} />
           </span>
@@ -127,7 +134,14 @@ export const TopBar = (props: {
             <strong style={{ color: props.roomTitleColor || undefined }}>
               {props.roomTitle || t("room")}
             </strong>
-            {props.roomDescription && <span>{props.roomDescription}</span>}
+            <div className={styles.roomMeta}>
+              {compactRoomCode && (
+                <span className={styles.roomCode} dir="ltr">
+                  {compactRoomCode}
+                </span>
+              )}
+              {props.roomDescription && <span>{props.roomDescription}</span>}
+            </div>
           </div>
         ) : (
           <nav className={styles.homeNav} aria-label="ناوبری اصلی">

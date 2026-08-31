@@ -161,6 +161,159 @@ const absoluteMediaPath = (relativePath: string) =>
   path.join(mediaDirectory, relativePath);
 
 const movieFolder = (id: string) => path.join(mediaDirectory, id);
+const browserPlayableExtensions = new Set([
+  ".m3u8",
+  ".mp4",
+  ".m4v",
+  ".mov",
+  ".webm",
+  ".ogv",
+  ".ogg",
+]);
+
+export const isServerMediaPath = (input: string) => {
+  const value = String(input || "").trim();
+  if (!value) {
+    return false;
+  }
+  if (/^file:\/\//i.test(value)) {
+    return true;
+  }
+  if (/^[a-z][a-z0-9+.-]*:/i.test(value)) {
+    return false;
+  }
+  return (
+    value.startsWith("/") ||
+    value.startsWith("./") ||
+    value.includes("\\") ||
+    value.includes("/") ||
+    /^media$/i.test(value)
+  );
+};
+
+const decodeMediaPath = (input: string) => {
+  try {
+    return decodeURIComponent(input);
+  } catch {
+    return input;
+  }
+};
+
+const getRelativeMediaPath = (input: string) => {
+  let value = decodeMediaPath(input.trim())
+    .replace(/^file:\/\//i, "")
+    .replaceAll("\\", "/");
+
+  if (value.startsWith("/media/")) {
+    return value.slice("/media/".length);
+  }
+
+  const mediaMarker = "/data/media/";
+  const markerIndex = value.toLowerCase().lastIndexOf(mediaMarker);
+  if (markerIndex >= 0) {
+    return value.slice(markerIndex + mediaMarker.length);
+  }
+
+  value = value
+    .replace(/^\.\/+/, "")
+    .replace(/^data\/media\//i, "")
+    .replace(/^media\//i, "");
+
+  if (path.isAbsolute(value)) {
+    const directPath = path.resolve(value);
+    const directRelative = path.relative(mediaDirectory, directPath);
+    if (
+      directRelative &&
+      !directRelative.startsWith("..") &&
+      !path.isAbsolute(directRelative)
+    ) {
+      return directRelative;
+    }
+    throw new Error(
+      "Only files inside Watch's configured media directory can be played.",
+    );
+  }
+
+  return value;
+};
+
+export const resolveServerMediaPath = (input: string) => {
+  ensureMediaDirectory();
+  const relativeInput = getRelativeMediaPath(String(input || ""));
+  const target = path.resolve(mediaDirectory, relativeInput);
+  const relativeTarget = path.relative(mediaDirectory, target);
+
+  if (
+    !relativeTarget ||
+    relativeTarget.startsWith("..") ||
+    path.isAbsolute(relativeTarget)
+  ) {
+    throw new Error(
+      "The media path must point to a file or movie folder inside Watch's media directory.",
+    );
+  }
+
+  let playableTarget = target;
+  let stats: fs.Stats;
+  try {
+    stats = fs.statSync(playableTarget);
+  } catch {
+    throw new Error("The requested VPS media path does not exist.");
+  }
+
+  if (stats.isDirectory()) {
+    playableTarget = path.join(playableTarget, "master.m3u8");
+  } else {
+    const siblingHls = path.join(path.dirname(playableTarget), "master.m3u8");
+    if (
+      path.basename(playableTarget).toLowerCase().startsWith("original.") &&
+      fs.existsSync(siblingHls)
+    ) {
+      playableTarget = siblingHls;
+    }
+  }
+
+  let playableStats: fs.Stats;
+  try {
+    playableStats = fs.statSync(playableTarget);
+  } catch {
+    throw new Error(
+      "No playable HLS playlist exists in this movie folder yet.",
+    );
+  }
+  if (!playableStats.isFile()) {
+    throw new Error("The requested VPS media path is not a playable file.");
+  }
+
+  const realMediaDirectory = fs.realpathSync(mediaDirectory);
+  const realPlayableTarget = fs.realpathSync(playableTarget);
+  const realRelativeTarget = path.relative(
+    realMediaDirectory,
+    realPlayableTarget,
+  );
+  if (
+    realRelativeTarget.startsWith("..") ||
+    path.isAbsolute(realRelativeTarget)
+  ) {
+    throw new Error(
+      "The resolved media file must remain inside Watch's media directory.",
+    );
+  }
+
+  const extension = path.extname(playableTarget).toLowerCase();
+  if (!browserPlayableExtensions.has(extension)) {
+    throw new Error(
+      "This file is not directly browser-playable. Wait for HLS conversion or select master.m3u8.",
+    );
+  }
+
+  const relativePlayablePath = path.relative(mediaDirectory, playableTarget);
+  return {
+    url: relativeUrl(relativePlayablePath),
+    relativePath: relativePlayablePath,
+    absolutePath: playableTarget,
+  };
+};
 
 const mediaForUser = (record: MediaRecord, user: AppUser) =>
   user.role === "admin" || record.owner === user.username;

@@ -108,6 +108,25 @@ Do not commit `.env`, database URLs, Redis URLs, TURN credentials, or other secr
 
 Each new upload is stored under `data/media/<movie-id>/`. The original file is preserved by default, while `master.m3u8`, numbered transport-stream segments, `poster.jpg`, `thumbnail.jpg`, and `metadata.json` are generated in the same folder. The queue survives restarts: interrupted jobs return to the queued state when Watch starts again.
 
+New rooms use short four-letter codes such as `ABCD`. Users can join with the
+full `/watch/ABCD` URL, by entering `ABCD` on the landing page, or by opening
+`/ABCD` directly.
+
+The room media field also accepts VPS paths inside `MEDIA_DATA_DIR`. Supported
+examples include:
+
+```text
+/opt/watch/data/media/<movie-id>/master.m3u8
+/usr/src/data/media/<movie-id>/master.m3u8
+/media/<movie-id>/master.m3u8
+<movie-id>/master.m3u8
+```
+
+Entering a movie folder or its `original.*` path automatically selects the
+converted `master.m3u8` when it exists. Paths outside `MEDIA_DATA_DIR` are
+rejected. Administrators can copy the complete playback URL from the media card
+in the admin panel; the viewer must be signed in to Watch.
+
 The HLS playlist is published progressively. Once at least 30 seconds of segments exist, the room switches to the HLS source automatically and FFmpeg continues appending segments until the final playlist is complete. Media settings and per-movie recovery controls are available in the administrator panel.
 
 The upload dialog can instead keep the room on its current media until conversion reaches 100%. In that mode it remains open and displays the encoding percentage, speed, status, and estimated remaining time.

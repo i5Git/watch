@@ -256,6 +256,7 @@ export class App extends React.Component<AppProps, AppState> {
   consumerConn?: RTCPeerConnection;
   progressUpdater?: number;
   heartbeat: number | undefined = undefined;
+  syncHeartbeat: number | undefined = undefined;
   fullscreenControlsTimer: number | undefined;
   fullscreenControlsTimerGeneration = 0;
   managedMediaRequestGeneration = 0;
@@ -345,10 +346,14 @@ export class App extends React.Component<AppProps, AppState> {
     document.documentElement.classList.remove("watch-fullscreen");
     document.body.classList.remove("watch-fullscreen");
     window.clearInterval(this.heartbeat);
+    window.clearInterval(this.syncHeartbeat);
   }
 
   init = async () => {
-    let roomId = "/" + this.props.urlRoomId;
+    const urlRoomId = /^[a-z]{4}$/i.test(this.props.urlRoomId || "")
+      ? this.props.urlRoomId?.toUpperCase()
+      : this.props.urlRoomId;
+    let roomId = "/" + urlRoomId;
     // if a vanity name, resolve the url to a room id
     if (this.props.vanity) {
       const resp = await fetch(
@@ -818,13 +823,13 @@ export class App extends React.Component<AppProps, AppState> {
           Number.isFinite(leader)
         ) {
           const now = Date.now();
-          if (Math.abs(delta) > 2.5 && now - this.lastHardSyncAt > 4000) {
+          if (Math.abs(delta) > 1.25 && now - this.lastHardSyncAt > 2500) {
             this.lastHardSyncAt = now;
             this.localSeek(leader);
             if (this.state.roomPlaybackRate === 0) {
               this.Player().setPlaybackRate(1);
             }
-          } else if (this.state.roomPaused && Math.abs(delta) > 0.3) {
+          } else if (this.state.roomPaused && Math.abs(delta) > 0.12) {
             this.localSeek(leader);
             if (this.state.roomPlaybackRate === 0) {
               this.Player().setPlaybackRate(1);
@@ -834,10 +839,10 @@ export class App extends React.Component<AppProps, AppState> {
             this.state.roomPlaybackRate === 0
           ) {
             let playbackRate = 1;
-            if (delta > 0.18) {
-              playbackRate = 1 + Math.min(0.06, delta * 0.02);
-            } else if (delta < -0.18) {
-              playbackRate = 1 - Math.min(0.06, Math.abs(delta) * 0.02);
+            if (delta > 0.1) {
+              playbackRate = 1 + Math.min(0.05, delta * 0.025);
+            } else if (delta < -0.1) {
+              playbackRate = 1 - Math.min(0.05, Math.abs(delta) * 0.025);
             }
             playbackRate = Number(playbackRate.toFixed(2));
             if (this.Player().getPlaybackRate() !== playbackRate) {
@@ -926,12 +931,13 @@ export class App extends React.Component<AppProps, AppState> {
       },
     );
     socket.on("REC:getRoomState", this.handleRoomState);
-    window.setInterval(() => {
+    window.clearInterval(this.syncHeartbeat);
+    this.syncHeartbeat = window.setInterval(() => {
       if (this.state.roomMedia) {
         const toSend = this.getRoomTSToSet(this.Player().getCurrentTime());
         this.socket.emit("CMD:ts", toSend);
       }
-    }, 1000);
+    }, 500);
   };
 
   setFileSelection = (
@@ -1863,6 +1869,9 @@ export class App extends React.Component<AppProps, AppState> {
         try {
           await this.Player().playVideo();
         } catch (e: any) {
+          if (e?.name === "AbortError") {
+            return;
+          }
           console.warn(e, e.name);
           if (e.name === "NotSupportedError" && this.usingNative()) {
             this.setState({ loading: false, nonPlayableMedia: true });
@@ -1885,7 +1894,6 @@ export class App extends React.Component<AppProps, AppState> {
 
   localSetVolume = (volume: number) => {
     this.Player().setVolume(volume);
-    this.refreshControls();
   };
 
   localSubtitleModal = () => {
@@ -2336,10 +2344,7 @@ export class App extends React.Component<AppProps, AppState> {
     if (!timestamps.length) {
       return this.Player().getCurrentTime();
     }
-    if (this.state.participants.length > 2) {
-      return calculateMedian(timestamps);
-    }
-    return Math.max(...timestamps);
+    return calculateMedian(timestamps);
   };
 
   onVideoEnded = (url: string) => {
@@ -2521,6 +2526,7 @@ export class App extends React.Component<AppProps, AppState> {
         )}
         {!this.state.fullScreen && (
           <TopBar
+            roomCode={this.state.roomId.replace(/^\//, "")}
             roomTitle={
               this.state.roomTitle || this.context.siteSettings.defaultRoomName
             }
